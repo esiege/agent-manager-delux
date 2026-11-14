@@ -3,20 +3,23 @@
 You are adding performance reporting to a game or app, so its frame rate, frame times and memory show up on the **Game** tab of Agent Manager Delux for every machine it runs on. This page tells you what to send. It is plain HTTPS and JSON, so it works from any engine.
 
 - **`$MANAGER_URL`** below means the address you fetched this page from, without `/performance.md`.
-- **The key** goes in the `X-Agent-Manager-Key` header of every call (not `Authorization`, which the host replaces). Use a **game key**: see "If there's no game key" below. A game key can only make the two calls on this page, so it is safe to put in a build that goes to other people's machines. Never put a machine key (the one in `AGENT_MANAGER_KEY`) in a build. Keep the game key out of a public repository all the same: load it from a build setting or a file that isn't committed.
+- **The key** goes in the `X-Agent-Manager-Key` header of every call (not `Authorization`, which the host replaces). Use a **game key**: see "If there's no game key" below. A game key can only make the two calls on this page, so it is safe to put in a build that goes to other people's machines. Never put a machine key (the one in `AGENT_MANAGER_KEY`) in a build. The game key **must be packaged into the build**, so every copy of the game reports, on every player's machine. Keep it out of the repository all the same: see "If there's no game key" below.
 - Every call is a `POST` with a JSON body, and answers JSON. A refused call returns 4xx with `{"error": "<one line saying what to fix>"}`. Add `"test": true` to check a call without storing anything.
 - Send nothing personal: no player names, account ids, IP addresses or file paths. A machine name is enough to tell machines apart; for players' machines, use a random id the game makes once and keeps.
 
 ## If there's no game key
 
-Each game has its own key, which the person makes and saves themselves. Pick where the game will load it from: a build setting, an environment variable, or a file that isn't committed (add it to `.gitignore`). Check whether it's already there, without printing it. If it isn't, stop and give the person these steps, with the address and the place filled in:
+Each game has its own key, which the person makes and saves themselves. It has to end up **inside the packaged build**, but not in git. The usual way is a small file in the project that is listed in `.gitignore` and that the packaging step copies into the build (in Unreal, for example, a config file under `Config/` or a file added to the packaged non-asset directories). Don't read it from an environment variable or from a path on the developer's PC: that only works on the machine where it was set, and every other copy of the game silently sends nothing. Check whether the file is already there, without printing it. If it isn't, stop and give the person these steps, with the address and the file filled in:
 
 1. Open `$MANAGER_URL/keys` and sign in.
 2. Under **Game keys**, type the game's name and choose **Create game key**.
-3. The key is shown once. Copy it and save it in `<the place you picked>` yourself. Don't paste the key into this chat.
+3. The key is shown once. Copy it and save it in `<the file you picked>` yourself. Don't paste the key into this chat.
 4. Tell me when that's done.
 
-Then carry on, and check each call with `"test": true` before the game sends real data.
+Then carry on, and check each call with `"test": true` before the game sends real data. Two more things:
+
+- If the game starts without a key, it should log one clear warning (for example "Performance reporting off: no game key in the build"), not skip reporting silently.
+- Before you say it's done, check a **packaged build**, not just the editor or a dev run: the key file must be inside it. Anyone building the game on another PC needs the same file, so tell the person where it goes.
 
 ## How it fits together
 
