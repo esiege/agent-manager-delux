@@ -17,7 +17,7 @@
 </p>
 
 <p align="center">
-  <a href="#get-started-in-3-steps">Get started</a> ·
+  <a href="#get-started">Get started</a> ·
   <a href="#what-you-get">Features</a> ·
   <a href="#how-it-works">How it works</a> ·
   <a href="#setting-up-an-agent-send-it-a-link">Set up an agent</a> ·
@@ -26,38 +26,37 @@
   <a href="#connect-a-pc">Connect a PC</a>
 </p>
 
-## Get started in 3 steps
+## Get started
 
-### 1. Set up your own copy
+<p align="center">
+  <img src="Docs/assets/get-started.svg" alt="1. Paste one prompt. 2. Copy one sentence. 3. Send it to your agent." width="900">
+</p>
 
-Pick where it runs:
+### 1. Paste
 
-| | ☁️ In the cloud (recommended) | 💻 On this PC |
-| --- | --- | --- |
-| **Reachable from** | Every PC, and your phone | This PC only |
-| **Sign-in** | GitHub, your account only | None, since only this PC can reach it |
-| **Has to be running** | Nothing, it's always up | Two terminal windows |
-| **Needs** | A free [Azure account](https://azure.microsoft.com/free) | Nothing extra |
-| **Cost** | Cents a month | Free |
-| **Good for** | Agents on several PCs | Trying it out, or one machine |
+Make an empty folder, open Claude Code in it, and paste one line.
 
-Then make an empty folder, open Claude Code in it, and paste the prompt for your choice.
-
-**☁️ In the cloud**
+**☁️ Cloud** (recommended: every PC, and your phone)
 
 ```text
 Read https://raw.githubusercontent.com/esiege/agent-manager-delux/main/deploy.md and deploy my own Agent Manager Delux to Azure from this folder.
 ```
 
-**💻 On this PC**
+**💻 This PC** (free, this PC only)
 
 ```text
 Read https://raw.githubusercontent.com/esiege/agent-manager-delux/main/deploy.md and set up Agent Manager Delux to run on this PC from this folder.
 ```
 
-Claude Code checks your tools, gets the code and builds it. For the cloud, it walks you through signing in to Azure and deploys the site on the Free plan. On this PC, it gives you the two commands that start it. It stops and asks whenever it needs you, and takes about 10 minutes.
+Claude Code does the rest and asks when it needs you. About 10 minutes. Cloud needs a free [Azure account](https://azure.microsoft.com/free) and costs cents a month.
 
-You can switch later and take your data with you. The prompts are under *Other ways to set it up*, below.
+### 2. Copy
+
+Open your site's **Instructions** tab and copy the sentence. It has your address filled in.
+
+### 3. Send
+
+Send it to Claude Code on each PC. The agent sets itself up and appears on the **Agents** tab.
 
 <details>
 <summary><b>Other ways to set it up</b></summary>
@@ -69,20 +68,10 @@ You can switch later and take your data with you. The prompts are under *Other w
 | Use a different agent | Send it the same prompt. Any agent that can run shell commands can follow [deploy.md](deploy.md). |
 | Would rather do it yourself | For the cloud, follow [Deploy to Azure](#deploy-to-azure): two commands. For this PC, see *Run it locally* under [For contributors](#for-contributors). |
 | Already deployed, and want the latest | Run `git pull`, then `./scripts/deploy.ps1 -SkipInfra`. |
-| Want to move from this PC to the cloud | Tell Claude Code: *Read https://raw.githubusercontent.com/esiege/agent-manager-delux/main/Docs/Move-To-Cloud.md and move my Agent Manager Delux from this PC to the cloud.* Your data, and the keys your PCs use, come with it. |
-| Want to move from the cloud to this PC | Tell Claude Code: *Read https://raw.githubusercontent.com/esiege/agent-manager-delux/main/Docs/Move-To-Local.md and move my Agent Manager Delux from the cloud to this PC.* At the end it asks whether to delete the Azure resources, or keep them and save where they are for later. |
+| Want to move from this PC to the cloud | Tell Claude Code: *Read https://raw.githubusercontent.com/esiege/agent-manager-delux/main/Docs/Move-To-Cloud.md and move my Agent Manager Delux from this PC to the cloud.* Your data and keys come with it. |
+| Want to move from the cloud to this PC | Tell Claude Code: *Read https://raw.githubusercontent.com/esiege/agent-manager-delux/main/Docs/Move-To-Local.md and move my Agent Manager Delux from the cloud to this PC.* |
 
 </details>
-
-### 2. Copy this sentence
-
-Once your site is running, copy this sentence. The site's **Instructions** tab has it with your address filled in (`http://localhost:5173` on this PC).
-
-> Read `https://<your-site>/instructions.md` and set yourself up to report to Agent Manager Delux.
-
-### 3. Send it to your agent
-
-Send it to Claude Code on each PC you run agents on. That's it: the agent sets itself up and shows up on the **Agents** tab. The first time on a PC, it tells you how to make the PC's key on the **Keys** tab.
 
 ## Why
 
@@ -194,7 +183,7 @@ The design is in [Docs/Spec-v2.md](Docs/Spec-v2.md).
 
 ## Deploy to Azure
 
-To have an agent do this for you, see [Get started](#get-started-in-3-steps). To do it yourself:
+To have an agent do this for you, see [Get started](#get-started). To do it yourself:
 
 ```powershell
 az login
