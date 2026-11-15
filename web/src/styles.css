@@ -263,6 +263,73 @@
   }
 }
 
+/* The link to the source, in the top right of the instructions page. */
+.am-github {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 14px 8px 12px;
+  border: 1px solid var(--mantine-color-default-border);
+  border-radius: var(--mantine-radius-md);
+  background-color: var(--mantine-color-default);
+  color: var(--mantine-color-text);
+  text-decoration: none;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease;
+}
+
+@media (hover: hover) {
+  .am-github:hover {
+    border-color: var(--mantine-primary-color-filled);
+    background-color: var(--mantine-color-default-hover);
+  }
+
+  .am-github:hover .am-github-arrow {
+    color: var(--mantine-primary-color-filled);
+    transform: translate(2px, -2px);
+  }
+}
+
+.am-github:focus-visible {
+  outline: 2px solid var(--mantine-primary-color-filled);
+  outline-offset: 2px;
+}
+
+.am-github-logo {
+  flex: none;
+}
+
+.am-github-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.25;
+}
+
+.am-github-title {
+  font-size: var(--mantine-font-size-sm);
+  font-weight: 600;
+}
+
+.am-github-repo {
+  overflow: hidden;
+  color: var(--mantine-color-dimmed);
+  font-family: var(--mantine-font-family-monospace);
+  font-size: var(--mantine-font-size-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.am-github-arrow {
+  flex: none;
+  align-self: flex-start;
+  color: var(--mantine-color-dimmed);
+  transition:
+    color 120ms ease,
+    transform 120ms ease;
+}
+
 /* Stands where the full instructions panel goes, until it's opened. */
 .am-full-reveal {
   display: flex;

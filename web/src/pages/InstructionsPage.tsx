@@ -2,7 +2,7 @@
 
 import { INSTRUCTIONS_UPDATED, INSTRUCTIONS_VERSION } from '@agent-manager-delux/shared';
 import { Anchor, Box, Button, CopyButton, Group, Paper, Text, Title, Tooltip, Typography, UnstyledButton } from '@mantine/core';
-import { IconBook2, IconCheck, IconChevronDown, IconCopy, IconDownload, IconFileText } from '@tabler/icons-react';
+import { IconArrowUpRight, IconBook2, IconBrandGithub, IconCheck, IconChevronDown, IconCopy, IconDownload, IconFileText } from '@tabler/icons-react';
 import { createElement, useState, type ReactNode } from 'react';
 import Markdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -15,6 +15,7 @@ const INSTRUCTIONS_PATH = '/instructions.md';
 const AGENTCTL_PATH = '/agentctl.js';
 const UPDATE_PATH = '/update.md';
 const PERFORMANCE_PATH = '/performance.md';
+const GITHUB_URL = 'https://github.com/esiege/agent-manager-delux';
 
 async function loadInstructions(signal: AbortSignal): Promise<string> {
   let res: Response;
@@ -148,7 +149,16 @@ export function InstructionsPage() {
 
   return (
     <>
-      <PageHeader title="Agent Instructions" />
+      <PageHeader title="Agent Instructions">
+        <a className="am-github" href={GITHUB_URL} target="_blank" rel="noopener noreferrer">
+          <IconBrandGithub className="am-github-logo" size={26} stroke={1.5} aria-hidden />
+          <span className="am-github-text">
+            <span className="am-github-title">View on GitHub</span>
+            <span className="am-github-repo">esiege/agent-manager-delux</span>
+          </span>
+          <IconArrowUpRight className="am-github-arrow" size={16} aria-hidden />
+        </a>
+      </PageHeader>
 
       <div className="am-start">
         <ol className="am-steps">
