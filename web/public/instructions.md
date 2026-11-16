@@ -1,6 +1,6 @@
 # Agent Manager Delux: how to report in
 
-Instructions version: **3** · Updated: **2026-10-26**
+Instructions version: **4** · Updated: **2026-11-15**
 
 Already set up on this PC? Follow `$MANAGER_URL/update.md` instead: it checks whether you're on the latest and updates if not.
 
@@ -9,7 +9,7 @@ You are an AI agent (Claude Code, OpenClaw, or something else) and the person yo
 - **`$MANAGER_URL`** below means the address you fetched this page from, without `/instructions.md` (for example `https://agents.example.net`).
 - If a tool gave you a summary of this page, fetch the raw file (`curl -fsSL $MANAGER_URL/instructions.md`) so you have the exact commands.
 - **The machine key is a secret.** It is never on this page. Read it from the `AGENT_MANAGER_KEY` environment variable. Don't print it, log it or write it into files other than the ones these steps name. If it isn't set, stop and explain how to set one up: see "If there's no machine key" below.
-- Never send file contents, command lines, tool output or anything secret to Agent Manager Delux. Send short status lines, the person's prompt, and short reports of finished work only.
+- Never send file contents, command lines, tool output or anything secret to Agent Manager Delux. Send short status lines, the person's prompt, short reports of finished work, and the pictures, clips and sounds you made to ask for feedback only.
 
 ## If there's no machine key
 
@@ -78,12 +78,52 @@ Recommended: add this to the project's or the user's `CLAUDE.md`, so agents name
   becomes the report's name), then report it:
   `node "$HOME/.agent-manager/agentctl.js" done "<2 to 5 short Markdown bullets: what you did>" --check "<what the person should see now>" --check "..."`
   Keep the checks few and concrete: where to look, and what they'll see there.
+- To ask the person for feedback (a design pick, "does this look right?", a sound check), ask on
+  the Feedback tab: one item per request, named in the title. Don't wait on it: build your default
+  first and say what it is.
+  `node "$HOME/.agent-manager/agentctl.js" feedback ask "<the item>" --body "<what's built; the default you go with>" --image <shot> --choice "<question>|<option>|<option>*"`
+  When an answer arrives (posted into the session, or listed by `agentctl feedback list`), read it
+  with `node "$HOME/.agent-manager/agentctl.js" feedback <id>`, then keep its status current as you
+  work: `feedback status <id> planning`, then `implementing`, then
+  `closed --note "<what you did, in their words>"`. If you have more questions, ask them with
+  `feedback ask ... --follows <id>` instead.
 - Keep everything short and plain. Never include secrets, file contents or command lines.
 ```
 
 `agentctl done` refuses while there are uncommitted changes, so the report always links to the work (`--uncommitted` sends it anyway). `agentctl task "<text>"` pins the technical step until the next prompt, and `agentctl status "<text>"` sets the one-line activity.
 
 To remove it: `node "$HOME/.agent-manager/agentctl.js" uninstall`.
+
+### Asking the person for feedback
+
+When you want the person's view (which of two designs, whether a level feels right, how a sound
+lands), ask on the **Feedback** tab instead of by email or in chat. They answer there in a click or
+two, and the answer comes back to you.
+
+```bash
+node "$HOME/.agent-manager/agentctl.js" feedback ask "New Clunk: Beaverlogger" \
+  --body "Built with ivory teeth (the default I keep if you don't answer). Not about: the walk cycle." \
+  --image ivory.png --image gold.png --audio roar.mp3 \
+  --choice "Which teeth?|Ivory|Gold*" --rating "How menacing is it?|Cuddly|Terrifying" \
+  --question "Anything else?"
+```
+
+- **Questions**, in the order given: `--question` (free text), `--choice "<question>|<option>|<option>*"` (pick one; `*` marks the one you recommend, which starts picked), `--multi` (pick any), `--rating "<question>|<low end>|<high end>"` (1 to 5). With none, the person gets one free-text box.
+- **Files**: `--image` (PNG, JPEG, WebP, GIF up to 8 MB), `--video` (MP4, WebM), `--audio` (MP3, WAV, OGG, M4A), each up to 25 MB, as many as 12. `--screen` captures the screen on macOS and Linux.
+- **Pictures as options** (an A/B pick) and anything more: write the form as JSON and pass `--form form.json`. It's a list of questions, each `{"type": "text" | "choice" | "rating", "prompt", "options": [{"label", "detail", "media": "gold.png"}], "recommended", "multiple", "max" (2 to 10), "low", "high", "media": ["clip.mp4"]}`. Files the form names are attached for you.
+- **Follow-ups**: `--follows <id>` makes the request the next round of an earlier one. The earlier one shows "Follow-up questions" and links to it.
+
+Then, in this order:
+
+1. **Don't wait.** Carry on with your default. When they answer, the answer is posted into the session if messages are on for this PC; otherwise `agentctl feedback list` shows what's answered.
+2. **Read the answer** with `agentctl feedback <id>`. That tells the person you've seen it (the card shows "Agent viewed").
+3. **Keep the status current** as you act on it, so the person can see where their feedback got to:
+   - `agentctl feedback status <id> planning` when you start planning the change,
+   - `agentctl feedback status <id> implementing` when you start building it,
+   - `agentctl feedback status <id> closed --note "You wrote: '…'. Done in v0.18."` when it's done, in their words,
+   - or ask a follow-up with `--follows <id>` if you have more questions.
+
+If they press **Dismiss**, they have no opinion: go ahead with your default, and close it the same way.
 
 ### Messages from Agent Manager Delux
 
@@ -147,12 +187,12 @@ curl:
 ```bash
 curl -fsS -X POST "$MANAGER_URL/api/v1/report" \
   -H "X-Agent-Manager-Key: $AGENT_MANAGER_KEY" -H "Content-Type: application/json" \
-  -d '{"agentId":"openclaw/community-web","kind":"openclaw","machine":"claw-host","name":"Community manager (web)","state":"working","activity":"Answering new comments","lostAfterSeconds":300,"instructionsVersion":3}'
+  -d '{"agentId":"openclaw/community-web","kind":"openclaw","machine":"claw-host","name":"Community manager (web)","state":"working","activity":"Answering new comments","lostAfterSeconds":300,"instructionsVersion":4}'
 ```
 
 PowerShell:
 ```powershell
-$body = @{ agentId = 'gma/functions'; kind = 'service'; machine = 'azure'; name = 'Game Master Assistant'; state = 'working'; activity = 'Serving requests'; instructionsVersion = 3 } | ConvertTo-Json
+$body = @{ agentId = 'gma/functions'; kind = 'service'; machine = 'azure'; name = 'Game Master Assistant'; state = 'working'; activity = 'Serving requests'; instructionsVersion = 4 } | ConvertTo-Json
 Invoke-RestMethod -Method Post "$MANAGER_URL/api/v1/report" -Headers @{ "X-Agent-Manager-Key" = $env:AGENT_MANAGER_KEY } -ContentType 'application/json' -Body $body
 ```
 
@@ -171,10 +211,19 @@ def report(manager_url: str, **fields) -> dict:
         return json.load(res)
 
 report("https://agents.example.net", agentId="openclaw/community-game", kind="openclaw", machine="claw-host",
-       state="working", activity="Posted patch notes for 1.4", link="https://example.com/news/1-4", instructionsVersion=3)
+       state="working", activity="Posted patch notes for 1.4", link="https://example.com/news/1-4", instructionsVersion=4)
 ```
 
 The answer includes `agentUrl`, the agent's page in Agent Manager Delux, and `warnings` for anything that was adjusted (for example a field that was too long).
+
+### Feedback: `POST $MANAGER_URL/api/v1/feedback`
+
+Ask the person for feedback; they answer on the Feedback tab. The body: `agentId`, `title` (the item, up to 200), `body` (Markdown, up to 8,000), `questions` (up to 8, in the `--form` shape under "Asking the person for feedback" above) and `follows` (an earlier request's id). The answer's `stored.id` is the request's id. Then:
+
+- `POST /api/v1/feedback/media?id=<id>&name=<file name>` with the file as the body and its `Content-Type` attaches a picture, clip or sound. Questions and options refer to files by that name.
+- `GET /api/v1/feedback/item?id=<id>` returns the request with `status` and `response` (`answers` by question id, and a `note`). Reading an answered request marks it viewed.
+- `GET /api/v1/feedback/inbox` lists your requests that aren't closed.
+- `POST /api/v1/feedback/status` with `{"id", "status": "planning" | "implementing" | "closed" | "followup", "note"}` moves it on.
 
 ### Heartbeat for many agents: `POST $MANAGER_URL/api/v1/heartbeat`
 

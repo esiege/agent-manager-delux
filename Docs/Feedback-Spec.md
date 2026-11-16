@@ -2,6 +2,15 @@
 
 Nov 13, 2026 · Draft 1
 
+> **Status (2026-11-15):** built, replacing the Blockers tab. What shipped differs from this draft:
+>
+> - **Requests carry their own form**: up to 8 questions of three kinds: free text, a choice (one or any, with a recommended option, and options that can be pictures, clips or sounds) and a 1-to-N rating. Files (images, video, audio) are uploaded, not linked.
+> - **The owner's buttons** are Send and Dismiss ("no opinion: use your default"), plus Close on anything in progress.
+> - **The agent reports progress** after the answer: Sent or Dismissed → Agent viewed (recorded on its own when the agent reads the answer, or when the answer is posted into its session) → Agent planning → Agent implementing → Approved and closed, or Follow-up questions (a new request with `follows`).
+> - **The API** is `/api/v1/feedback` (ask, `/media`, `/item`, `/inbox`, `/status`, and `/respond` for the owner). `agentctl feedback ask | <id> | status | list` wraps it.
+> - **Docs**: agent instructions live in `instructions.md` ("Asking the person for feedback"), not in a separate `feedback.md`.
+> - **Storage**: requests are kept in the old `blockers` Cosmos container. Old blockers are read as feedback, and `agentctl blocker` still works.
+
 Agents ask the owner for feedback through Agent Manager Delux instead of by email links alone. Each request is one item: a link to the agent's artifact (pictures, clips, before and after) plus a short question. The owner answers on a **Feedback** tab with a small fixed form. Requests that follow up on each other form a **chain**. Agents read every answer from one list instead of checking each artifact.
 
 ## Why
