@@ -24,9 +24,17 @@ import {
   type PerfSessionsResponse,
 } from '@agent-manager-delux/shared';
 import { requireKey, requireOwnerOrKey } from '../auth';
+import { recordCrash } from './crashes';
 import { HttpError, fail, ok, publicOrigin, query, readJson, type Handler } from '../http';
 
 const DEFAULT_DAYS = 30;
+
+/** The scenes the session's samples named, in the order first seen. */
+function addScenes(kept: string[], samples: { scene?: string }[]): string[] {
+  const out = [...kept];
+  for (const s of samples) if (s.scene && !out.includes(s.scene) && out.length < LIMITS.perfScenesKept) out.push(s.scene);
+  return out;
+}
 const MAX_SESSIONS = 2000;
 /** About 14 hours of 10-second windows. */
 const MAX_SAMPLES = 5000;
@@ -73,16 +81,42 @@ export const perfSession: Handler = async (req, ctx) => {
           ? (existing?.endedAt ?? now)
           : // `ended: false` reopens it: the game carried on after all.
             null,
-    crash: input.crash ? { ...maskDeep(input.crash), reportedAt: now } : (existing?.crash ?? null),
+    // A real crash is stored by recordCrash below, which links its record; a test shows it as sent.
+    crash: input.crash && input.test ? { ...maskDeep(input.crash), reportedAt: now } : (existing?.crash ?? null),
+    ...(input.kind ?? existing?.kind ? { kind: input.kind ?? existing?.kind } : {}),
+    ...(existing?.scenes ? { scenes: existing.scenes } : {}),
     totals: existing?.totals ?? emptyPerfTotals(),
     keyName: key.name,
   };
 
-  if (!input.test) await ctx.store.putPerfSession(session);
+  let stored = session;
+  if (!input.test) {
+    await ctx.store.putPerfSession(session);
+    if (input.crash) {
+      const c = input.crash;
+      await recordCrash(
+        ctx,
+        {
+          game: session.game,
+          machine: session.machine,
+          build: session.build,
+          sessionId: session.id,
+          reason: c.reason,
+          ...(c.callstack ? { callstack: c.callstack } : {}),
+          ...(c.t !== undefined ? { t: c.t } : {}),
+          ...(c.scene ? { scene: c.scene } : {}),
+        },
+        'next-launch',
+        key.name,
+        publicOrigin(req, ctx.env),
+      );
+      stored = (await ctx.store.getPerfSession(session.id)) ?? session;
+    }
+  }
   const body: PerfSessionResponse = {
     ok: true,
     test: Boolean(input.test),
-    stored: session,
+    stored,
     warnings: result.warnings,
     sessionUrl: `${publicOrigin(req, ctx.env)}/performance/session?id=${encodeURIComponent(session.id)}`,
   };
@@ -116,6 +150,7 @@ export const perfSamples: Handler = async (req, ctx) => {
       lastSeen: now,
       totals: addPerfSamples(session.totals, added),
       worstHitches: worstPerfHitches(session.worstHitches, input.hitchEvents ?? []),
+      scenes: addScenes(session.scenes ?? [], added),
       errors: addPerfErrors(session.errors ?? [], (input.errorEvents ?? []).map((e) => ({ ...e, message: maskSecrets(e.message) }))),
     });
   }
@@ -148,11 +183,15 @@ export const perfSessions: Handler = async (req, ctx) => {
   }
   const now = ctx.now();
   const since = new Date(now.getTime() - days * 86_400_000).toISOString();
-  const found = (await ctx.store.listPerfSessions(since, MAX_SESSIONS + 1)).filter((s) => !game || s.game.toLowerCase() === game);
+  const tests = query(req).get('tests') === '1' || query(req).get('tests') === 'true';
+  const found = (await ctx.store.listPerfSessions(since, MAX_SESSIONS + 1)).filter(
+    (s) => (!game || s.game.toLowerCase() === game) && (tests || s.kind !== 'test'),
+  );
   const body: PerfSessionsResponse = {
     now: now.toISOString(),
     days,
     sessions: found.slice(0, limit),
+    machineNames: await ctx.store.getMachineNames(),
     truncated: found.length > limit,
   };
   return ok(body);
@@ -168,6 +207,7 @@ export const perfSessionDetail: Handler = async (req, ctx) => {
   const body: PerfSessionDetailResponse = {
     now: ctx.now().toISOString(),
     session,
+    machineNames: await ctx.store.getMachineNames(),
     samples: samples.slice(-MAX_SAMPLES),
     truncated: samples.length > MAX_SAMPLES,
   };

@@ -55,6 +55,7 @@ var containers = [
   { id: 'machines', partitionKey: '/id', ttl: 90 * 24 * 3600 }
   { id: 'settings', partitionKey: '/id', ttl: null }
   { id: 'releases', partitionKey: '/id', ttl: null }
+  { id: 'crashes', partitionKey: '/id', ttl: 365 * 24 * 3600 }
 ]
 
 resource containerResources 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers@2024-05-15' = [

@@ -342,7 +342,7 @@ describe('errors and crashes', () => {
     const res = await start(key, { crash: { reason: 'EXCEPTION_ACCESS_VIOLATION reading address 0x0', callstack: 'UMyActor::Tick\nFTickTask::Run', t: 312, scene: 'forest' } });
     expect(res.status).toBe(200);
     const s = await stored();
-    expect(s.crash).toEqual({
+    expect(s.crash).toMatchObject({
       reason: 'EXCEPTION_ACCESS_VIOLATION reading address 0x0',
       callstack: 'UMyActor::Tick\nFTickTask::Run',
       t: 312,

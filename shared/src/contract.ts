@@ -94,6 +94,14 @@ export const LIMITS = {
   /** A crash's one-line reason, and its callstack. */
   perfCrashReasonLength: 1000,
   perfCrashCallstackLength: 16000,
+  /** The tail of the game's log kept with a crash, and its breadcrumbs. */
+  crashLogLength: 32000,
+  crashBreadcrumbs: 100,
+  crashBreadcrumbLength: 300,
+  /** An Unreal crash report upload, minidump included. */
+  crashUploadBytes: 64 * 1024 * 1024,
+  machineNameLength: 40,
+  perfScenesKept: 50,
   /** A feedback request's one-line title, and its Markdown body. */
   feedbackTitleLength: 200,
   feedbackBodyLength: 8000,
@@ -888,6 +896,8 @@ export interface PerfSessionInput {
   details?: Record<string, unknown>;
   /** True once the run is over. */
   ended?: boolean;
+  /** `test` for automated or development runs: hidden on the Game tab and from `agentctl perf` unless asked for. */
+  kind?: PerfRunKind;
   /**
    * The run crashed. Usually sent on the next launch, for the previous session: the game can't
    * send it while crashing. Ends the session at the last time it was heard from.
@@ -909,6 +919,92 @@ export interface PerfCrashInput {
 
 export interface PerfCrash extends PerfCrashInput {
   reportedAt: string;
+  /** The crash's own record (GET /api/v1/perf/crash?id=). Missing on crashes stored before crashes had records. */
+  crashId?: string;
+}
+
+export const PERF_RUN_KINDS = ['play', 'test'] as const;
+export type PerfRunKind = (typeof PERF_RUN_KINDS)[number];
+
+/** How a crash reached the manager. */
+export const CRASH_SOURCES = ['crash-reporter', 'next-launch', 'api'] as const;
+export type CrashSource = (typeof CRASH_SOURCES)[number];
+
+/** POST /api/v1/perf/crash: a crash, sent by the game or a tool that read its crash report. */
+export interface CrashInput {
+  game: string;
+  machine: string;
+  build?: string | null;
+  /** The performance session that crashed, when known: it is marked crashed. */
+  sessionId?: string | null;
+  /** One line: the exception, assert or signal. */
+  reason: string;
+  callstack?: string;
+  /** The last lines of the game's log. */
+  log?: string;
+  /** What the game was doing just before, oldest first: "Loaded level forest", "Opened inventory". */
+  breadcrumbs?: string[];
+  /** When it crashed. Defaults to when it's reported. */
+  at?: string;
+  /** Seconds since the session started. */
+  t?: number;
+  scene?: string;
+  platform?: string | null;
+  /** Anything else: engine version, crash GUID, GPU driver. */
+  details?: Record<string, unknown>;
+  kind?: PerfRunKind;
+  test?: boolean;
+}
+
+/** One crash, as stored and shown on the Crashes tab. */
+export interface CrashRecord {
+  id: string;
+  game: string;
+  machine: string;
+  build: string | null;
+  sessionId: string | null;
+  at: string;
+  reportedAt: string;
+  reason: string;
+  callstack: string | null;
+  log: string | null;
+  breadcrumbs: string[];
+  t: number | null;
+  scene: string | null;
+  platform: string | null;
+  source: CrashSource;
+  kind: PerfRunKind;
+  details: Record<string, unknown>;
+  /** The Feedback item asking the owner what they were doing, when one was made. */
+  feedbackId: string | null;
+  keyName: string;
+}
+
+export interface CrashResponse extends WriteResponse<CrashRecord> {
+  crashUrl: string;
+}
+
+/** GET /api/v1/perf/crashes, as the owner or with a machine key: newest first. */
+export interface CrashesResponse {
+  now: string;
+  days: number;
+  crashes: CrashRecord[];
+  machineNames: Record<string, string>;
+  truncated: boolean;
+}
+
+/** GET /api/v1/perf/crash?id=: one crash, with the owner's answer to its Feedback item. */
+export interface CrashDetailResponse {
+  now: string;
+  crash: CrashRecord;
+  machineNames: Record<string, string>;
+  /** What the owner said they were doing, once they answered. */
+  answer: { by: string; at: string; text: string } | null;
+}
+
+/** GET and POST /api/v1/machine-names: nicknames for machines ("gaming rig" for pc-0dc004594da2). */
+export interface MachineNamesResponse {
+  names: Record<string, string>;
 }
 
 /** An error or failed check the game logged. */
@@ -1045,6 +1141,10 @@ export interface PerfSession {
   endedAt: string | null;
   /** Set when the game reported that this run crashed. Missing on older sessions. */
   crash?: PerfCrash | null;
+  /** `test` runs are hidden unless asked for. Missing means play. */
+  kind?: PerfRunKind;
+  /** The scenes its samples named, in the order first seen. Missing on older sessions. */
+  scenes?: string[];
   totals: PerfTotals;
   /** Name of the key that sent it. */
   keyName: string;
@@ -1061,6 +1161,8 @@ export interface PerfSessionsResponse {
   now: string;
   days: number;
   sessions: PerfSession[];
+  /** Nicknames by machine, for the machines that have one. */
+  machineNames?: Record<string, string>;
   /** True when there were more sessions than one answer holds. */
   truncated: boolean;
 }
@@ -1069,6 +1171,7 @@ export interface PerfSessionsResponse {
 export interface PerfSessionDetailResponse {
   now: string;
   session: PerfSession;
+  machineNames?: Record<string, string>;
   /** Oldest first. Empty once the samples have aged out. */
   samples: PerfSample[];
   /** True when the session has more samples than one answer holds: these are the latest. */

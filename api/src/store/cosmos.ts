@@ -16,6 +16,7 @@ import {
   type AgentMessage,
   type AlertSubscription,
   type AgentctlUpdateRequest,
+  type CrashRecord,
   type MachineRecord,
   type Feedback,
   type PerfSample,
@@ -27,6 +28,7 @@ import {
   isReportingEvent,
   MESSAGE_RETENTION_SECONDS,
   PERF_SAMPLE_RETENTION_SECONDS,
+  CRASH_RETENTION_SECONDS,
   PERF_SESSION_RETENTION_SECONDS,
   REPORTING_RETENTION_DAYS,
   RETENTION_DAYS,
@@ -60,6 +62,7 @@ const CONTAINERS = {
   settings: { partitionKey: '/id' },
   // Releases agents announce. Small, and the history is the point: kept until the owner deletes one.
   releases: { partitionKey: '/id' },
+  crashes: { partitionKey: '/id', defaultTtl: CRASH_RETENTION_SECONDS },
 } as const;
 
 type Name = keyof typeof CONTAINERS;
@@ -370,7 +373,29 @@ export class CosmosStore implements Store {
   async putUpdateRequest(request: AgentctlUpdateRequest) {
     await (await this.c('settings')).items.upsert({ ...request, id: UPDATE_REQUEST_ID });
   }
+
+  getCrash(id: string) {
+    return this.read<CrashRecord>('crashes', id, id);
+  }
+  async putCrash(crash: CrashRecord) {
+    await (await this.c('crashes')).items.upsert(crash);
+  }
+  listCrashes(since: string, limit: number) {
+    return this.query<CrashRecord>('crashes', 'SELECT TOP @limit * FROM c WHERE c.at >= @since ORDER BY c.at DESC', [
+      { name: '@since', value: since },
+      { name: '@limit', value: limit },
+    ]);
+  }
+
+  async getMachineNames() {
+    const doc = await this.read<{ id: string; names: Record<string, string> }>('settings', MACHINE_NAMES_ID, MACHINE_NAMES_ID);
+    return doc?.names ?? {};
+  }
+  async putMachineNames(names: Record<string, string>) {
+    await (await this.c('settings')).items.upsert({ id: MACHINE_NAMES_ID, names });
+  }
 }
 
 const UPDATE_REQUEST_ID = 'agentctl-update-request';
+const MACHINE_NAMES_ID = 'machine-names';
 

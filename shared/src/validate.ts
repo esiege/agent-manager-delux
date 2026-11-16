@@ -8,6 +8,7 @@ import {
   ALERT_EVENTS,
   LIMITS,
   PERF_ERROR_KINDS,
+  PERF_RUN_KINDS,
   PERF_SESSION_ID,
   REPORTED_STATES,
   WORK_TYPES,
@@ -18,6 +19,7 @@ import {
   type AlertEvent,
   type AlertSubscriptionInput,
   type HeartbeatInput,
+  type CrashInput,
   type PerfCrashInput,
   type PerfErrorEvent,
   type PerfHitch,
@@ -357,6 +359,7 @@ export function validatePerfSession(body: unknown): Result<PerfSessionInput> {
     const details = { ...(r.optionalObject('details') ?? {}) };
     const ended = r.optionalBool('ended');
     const crash = readPerfCrash(r.optionalObject('crash'), r.warnings);
+    const kind = r.oneOf('kind', PERF_RUN_KINDS, false);
     const test = r.optionalBool('test');
 
     const extra = r.unknownKeys();
@@ -365,6 +368,7 @@ export function validatePerfSession(body: unknown): Result<PerfSessionInput> {
     if (Object.keys(details).length) value.details = details;
     if (ended !== undefined) value.ended = ended;
     if (crash) value.crash = crash;
+    if (kind) value.kind = kind;
     if (test !== undefined) value.test = test;
     return value;
   });
@@ -384,6 +388,55 @@ function readPerfCrash(raw: Record<string, unknown> | undefined, warnings: strin
   if (extra.length) warnings.push(`Unknown field(s) ${extra.map((k) => `crash.${k}`).join(', ')} were ignored`);
   warnings.push(...r.warnings);
   return crash;
+}
+
+/** POST /api/v1/perf/crash. Long text is cut, not refused: a crash is worth keeping even if it's huge. */
+export function validateCrash(body: unknown): Result<CrashInput> {
+  return run(body, 'a crash', (r) => {
+    const value: CrashInput = {
+      game: r.requiredString('game', LIMITS.nameLength),
+      machine: r.requiredString('machine', LIMITS.nameLength),
+      reason: (r.optionalString('reason', LIMITS.perfCrashReasonLength, { truncate: true }) ?? '').trim(),
+    };
+    if (!value.reason) throw new Invalid('reason is required: one line saying what crashed');
+    const build = r.optionalString('build', LIMITS.nameLength, { truncate: true });
+    if (build !== undefined) value.build = build?.trim() || null;
+    const platform = r.optionalString('platform', LIMITS.nameLength, { truncate: true });
+    if (platform !== undefined) value.platform = platform?.trim() || null;
+    const sessionId = r.get('sessionId');
+    if (sessionId !== undefined && sessionId !== null) {
+      if (typeof sessionId !== 'string' || !PERF_SESSION_ID.test(sessionId)) throw new Invalid(SESSION_ID_HINT.replace('sessionId is required', 'sessionId must be'));
+      value.sessionId = sessionId;
+    }
+    const callstack = r.optionalString('callstack', LIMITS.perfCrashCallstackLength, { truncate: true });
+    if (callstack?.trim()) value.callstack = callstack.trim();
+    const log = r.get('log');
+    if (log !== undefined && log !== null) {
+      if (typeof log !== 'string') throw new Invalid('log must be a string');
+      // Keep the end: the lines just before the crash.
+      if (log.trim()) value.log = log.length > LIMITS.crashLogLength ? log.slice(-LIMITS.crashLogLength) : log;
+    }
+    const crumbs = r.get('breadcrumbs');
+    if (crumbs !== undefined && crumbs !== null) {
+      if (!Array.isArray(crumbs) || crumbs.some((c) => typeof c !== 'string')) throw new Invalid('breadcrumbs must be an array of strings');
+      value.breadcrumbs = (crumbs as string[]).slice(-LIMITS.crashBreadcrumbs).map((c) => c.slice(0, LIMITS.crashBreadcrumbLength));
+    }
+    const at = r.optionalTime('at');
+    if (at) value.at = at;
+    const t = r.optionalNumber('t', 0, MAX_T);
+    if (t !== undefined) value.t = t;
+    const scene = r.optionalString('scene', LIMITS.nameLength, { truncate: true });
+    if (scene?.trim()) value.scene = scene.trim();
+    const details = r.optionalObject('details');
+    if (details) value.details = details;
+    const kind = r.oneOf('kind', PERF_RUN_KINDS, false);
+    if (kind) value.kind = kind;
+    const test = r.optionalBool('test');
+    if (test !== undefined) value.test = test;
+    const extra = r.unknownKeys();
+    if (extra.length) r.warnings.push(`Unknown field(s) ${extra.join(', ')} were ignored`);
+    return value;
+  });
 }
 
 function readPerfError(raw: unknown, i: number, warnings: string[]): PerfErrorEvent {

@@ -6,6 +6,7 @@ import {
   type AgentEvent,
   type AgentKind,
   type AgentctlUpdateRequest,
+  type CrashRecord,
   type AgentMessage,
   type AlertSubscription,
   type Feedback,
@@ -58,6 +59,8 @@ export const FEEDBACK_RETENTION_SECONDS = FEEDBACK_RETENTION_DAYS * 86_400;
 /** Performance sessions are small and carry their totals; samples are the bulk. Counted from the last write. */
 export const PERF_SESSION_RETENTION_SECONDS = PERF_MAX_DAYS * 86_400;
 export const PERF_SAMPLE_RETENTION_SECONDS = PERF_SAMPLE_DAYS * 86_400;
+/** Crashes are kept as long as the sessions they belong to. */
+export const CRASH_RETENTION_SECONDS = PERF_MAX_DAYS * 86_400;
 
 export interface Store {
   getKey(id: string): Promise<StoredKey | null>;
@@ -117,4 +120,13 @@ export interface Store {
   /** The owner's latest "Auto-update all PCs", or null. */
   getUpdateRequest(): Promise<AgentctlUpdateRequest | null>;
   putUpdateRequest(request: AgentctlUpdateRequest): Promise<void>;
+
+  getCrash(id: string): Promise<CrashRecord | null>;
+  putCrash(crash: CrashRecord): Promise<void>;
+  /** Crashes whose `at` is at or after `since`, newest first. */
+  listCrashes(since: string, limit: number): Promise<CrashRecord[]>;
+
+  /** Nicknames by machine name. */
+  getMachineNames(): Promise<Record<string, string>>;
+  putMachineNames(names: Record<string, string>): Promise<void>;
 }

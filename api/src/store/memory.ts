@@ -10,6 +10,7 @@ import {
   type AgentKind,
   type AgentMessage,
   type AgentctlUpdateRequest,
+  type CrashRecord,
   type AlertSubscription,
   type Feedback,
   type MachineRecord,
@@ -51,6 +52,8 @@ export interface Snapshot {
   updateRequest?: AgentctlUpdateRequest | null;
   /** Missing in files saved before releases existed. */
   releases?: Release[];
+  crashes?: CrashRecord[];
+  machineNames?: Record<string, string>;
 }
 
 export class MemoryStore implements Store {
@@ -65,6 +68,8 @@ export class MemoryStore implements Store {
   private machines = new Map<string, MachineRecord>();
   private updateRequest: AgentctlUpdateRequest | null = null;
   private releases = new Map<string, Release>();
+  private crashes = new Map<string, CrashRecord>();
+  private machineNames: Record<string, string> = {};
 
   constructor(
     private readonly file?: string,
@@ -83,6 +88,8 @@ export class MemoryStore implements Store {
       for (const m of snap.machines ?? []) this.machines.set(machineKey(m), m);
       this.updateRequest = snap.updateRequest ?? null;
       for (const r of snap.releases ?? []) this.releases.set(r.id, r);
+      for (const c of snap.crashes ?? []) this.crashes.set(c.id, c);
+      this.machineNames = snap.machineNames ?? {};
       this.prune();
     }
   }
@@ -113,6 +120,8 @@ export class MemoryStore implements Store {
       machines: [...this.machines.values()],
       updateRequest: this.updateRequest,
       releases: [...this.releases.values()],
+      crashes: [...this.crashes.values()],
+      machineNames: this.machineNames,
     };
     writeFileSync(this.file, JSON.stringify(snap));
   }
@@ -284,6 +293,30 @@ export class MemoryStore implements Store {
   }
   async putUpdateRequest(request: AgentctlUpdateRequest) {
     this.updateRequest = structuredClone(request);
+    this.save();
+  }
+
+  async getCrash(id: string) {
+    return structuredClone(this.crashes.get(id) ?? null);
+  }
+  async putCrash(crash: CrashRecord) {
+    this.crashes.set(crash.id, structuredClone(crash));
+    this.save();
+  }
+  async listCrashes(since: string, limit: number) {
+    return structuredClone(
+      [...this.crashes.values()]
+        .filter((c) => c.at >= since)
+        .sort((a, b) => b.at.localeCompare(a.at))
+        .slice(0, limit),
+    );
+  }
+
+  async getMachineNames() {
+    return { ...this.machineNames };
+  }
+  async putMachineNames(names: Record<string, string>) {
+    this.machineNames = { ...names };
     this.save();
   }
 }

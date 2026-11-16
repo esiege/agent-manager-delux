@@ -13,6 +13,7 @@ import { basename } from 'node:path';
 import {
   AGENTCTL_COMMAND,
   FEEDBACK_DONE_STATUSES,
+  type CrashRecord,
   FEEDBACK_MEDIA_TYPES,
   FEEDBACK_RECENT_DAYS,
   FEEDBACK_STATUS_LABEL,
@@ -636,3 +637,72 @@ export const legacyBlocker: Handler = async (req, ctx) => {
     },
   });
 };
+
+// ---- Crashes ----
+
+/** The question a crash's Feedback item asks; its answer is shown with the crash. */
+export const CRASH_QUESTION_ID = 'doing';
+
+/**
+ * After a crash: a Feedback item asking the owner what they were doing. The game can't ask (the
+ * machine it crashed on may have no agentctl), so the manager asks for it. The answer stays on
+ * the item and shows on the crash's page and in `agentctl crashes <id>`.
+ */
+export async function askAboutCrash(ctx: Ctx, crash: CrashRecord, origin: string, machineName: string | null): Promise<Feedback> {
+  const at = ctx.now().toISOString();
+  const where = machineName ? `${machineName} (${crash.machine})` : crash.machine;
+  const crashUrl = `${origin}/crashes/crash?id=${encodeURIComponent(crash.id)}`;
+  const lines = [
+    `**${crash.reason}**`,
+    '',
+    `${crash.game}${crash.build ? ` ${crash.build}` : ''} crashed on ${where}${crash.scene ? `, in ${crash.scene}` : ''}.`,
+    '',
+    `[Open the crash](${crashUrl}): callstack, log and what led up to it.`,
+  ];
+  const feedback: Feedback = {
+    id: randomUUID(),
+    agentId: `crash-reporter/${crash.game}`,
+    agentName: `${crash.game} crashes`,
+    kind: 'other',
+    project: crash.game,
+    machine: crash.machine,
+    title: maskSecrets(`${crash.game} crashed on ${machineName ?? crash.machine}`),
+    body: maskSecrets(lines.join('\n')),
+    questions: [
+      {
+        id: CRASH_QUESTION_ID,
+        type: 'text',
+        prompt: 'What were you doing when it crashed?',
+        placeholder: 'In a match, opening the map, alt-tabbing…',
+      },
+    ],
+    media: [],
+    status: 'open',
+    createdAt: at,
+    updatedAt: at,
+    history: [{ status: 'open', at, by: `${crash.game} crashes`, note: null }],
+    response: null,
+    follows: null,
+    supersedes: null,
+    followedBy: null,
+    group: crash.build,
+    captions: {},
+    answerMedia: [],
+    notifiedAt: null,
+    expectFiles: 0,
+    delivery: null,
+    messageId: null,
+    keyName: crash.keyName,
+  };
+  await ctx.store.putFeedback(feedback);
+  return notifyOnce(ctx, feedback, origin);
+}
+
+/** What the owner said they were doing, from a crash's Feedback item. */
+export function crashAnswer(f: Feedback | null): { by: string; at: string; text: string } | null {
+  const r = f?.response;
+  if (!r) return null;
+  const answer = r.answers[CRASH_QUESTION_ID];
+  const parts = [typeof answer === 'string' ? answer : '', r.notes?.[CRASH_QUESTION_ID] ?? '', r.note ?? ''].map((s) => s.trim()).filter(Boolean);
+  return parts.length ? { by: r.by, at: r.at, text: parts.join('\n\n') } : null;
+}
