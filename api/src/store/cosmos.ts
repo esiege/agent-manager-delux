@@ -102,12 +102,18 @@ export class CosmosStore implements Store {
       const entries = await Promise.all(
         (Object.keys(CONTAINERS) as Name[]).map(async (name) => {
           const def = CONTAINERS[name];
-          const { container } = await database.containers.createIfNotExists({
-            id: name,
-            partitionKey: { paths: [def.partitionKey] },
-            ...('defaultTtl' in def ? { defaultTtl: def.defaultTtl } : {}),
-          });
-          return [name, container] as const;
+          try {
+            const { container } = await database.containers.createIfNotExists({
+              id: name,
+              partitionKey: { paths: [def.partitionKey] },
+              ...('defaultTtl' in def ? { defaultTtl: def.defaultTtl } : {}),
+            });
+            return [name, container] as const;
+          } catch (e) {
+            // Another instance created it between our read and our create: it's there now.
+            if ((e as { code?: number }).code !== 409) throw e;
+            return [name, database.container(name)] as const;
+          }
         }),
       );
       return Object.fromEntries(entries) as Record<Name, Container>;
