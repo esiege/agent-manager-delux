@@ -9,6 +9,7 @@ import {
   INSTRUCTIONS_VERSION,
   REPORTED_STATES,
   WORK_TYPES,
+  perfSessionStatus,
   perfStats,
   AGENTCTL_COMMAND,
   FEEDBACK_AGENT_STATUSES,
@@ -654,6 +655,8 @@ async function perfCommand(positional: string[], flags: Record<string, string>) 
       `worst ${num(stats.frameMsMax, ' ms', 1)}`,
       `${stats.hitches} hitches`,
       stats.bound ? `${stats.bound}-bound` : '-',
+      `${stats.errors + stats.ensures} errors`,
+      perfSessionStatus(s, Date.parse(list.now)),
     ];
   });
   const widths = rows[0]!.map((_, i) => Math.max(...rows.map((r) => r[i]!.length)));

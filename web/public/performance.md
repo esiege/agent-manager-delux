@@ -28,6 +28,7 @@ A **session** is one run of the game on one machine. The game makes its id, says
 1. At startup, make a session id (a UUID) and call **session**.
 2. While running, measure each frame. Every 5 to 10 seconds, turn the window into one sample. Send the samples you have every 30 to 60 seconds, in one call.
 3. On exit, send what is left, then call **session** again with `"ended": true`.
+4. If the game crashed, it can't say so while crashing. On the next launch, before starting the new session, report the old one as crashed: see "Errors and crashes" below.
 
 ## Session: `POST $MANAGER_URL/api/v1/perf/session`
 
@@ -46,6 +47,7 @@ Call it again with the same `sessionId` to add to what is known or to end the se
 | `loadSeconds` | no | How long the game took to start, up to its first playable frame. Send it once it's known. |
 | `details` | no | Any other JSON worth comparing runs by: quality preset, graphics API, GPU driver, window mode, screen percentage. Unknown top-level fields are kept here too. |
 | `ended` | no | `true` when the run is over. |
+| `crash` | no | The run crashed: `{"reason": "...", "callstack": "...", "t": 312.5, "scene": "forest"}`. Only `reason` is required. See "Errors and crashes". |
 
 The answer includes `sessionUrl`, the session's page in Agent Manager Delux.
 
@@ -57,7 +59,7 @@ curl -fsS -X POST "$MANAGER_URL/api/v1/perf/session" \
 
 ## Samples: `POST $MANAGER_URL/api/v1/perf/samples`
 
-Body: `{"sessionId": "...", "samples": [ ... ], "hitchEvents": [ ... ]}` with up to 500 samples per call (512 KB at most). Either list can be left out. The session must exist: an unknown `sessionId` answers 404. Each sample covers one window:
+Body: `{"sessionId": "...", "samples": [ ... ], "hitchEvents": [ ... ], "errorEvents": [ ... ]}` with up to 500 samples per call (512 KB at most). Any of the lists can be left out. The session must exist: an unknown `sessionId` answers 404. Each sample covers one window:
 
 | Field | Required | Meaning |
 | --- | --- | --- |
@@ -67,6 +69,7 @@ Body: `{"sessionId": "...", "samples": [ ... ], "hitchEvents": [ ... ]}` with up
 | `frameMsP50`, `frameMsP95`, `frameMsP99` | no | Percentiles of the window's frame times, in milliseconds: sort the window's frame times and take the value 50%, 95% and 99% of the way along. |
 | `frameMsMax` | no | The slowest frame in the window. |
 | `hitches` | no | Frames slow enough to notice. You choose the threshold and keep it the same everywhere; 50 ms is common. |
+| `errors`, `ensures` | no | Errors and failed checks (Unreal's `ensure`) logged in the window. Send `0` when there were none. |
 | `gameMs`, `renderMs`, `gpuMs` | no | Average game-thread, render-thread and GPU time per frame (Unreal's `stat unit` numbers). Agent Manager Delux says which one the frame waited on. An engine that doesn't split the CPU's work by thread sends `cpuMs` and `gpuMs`. |
 | `memoryMb`, `vramMb` | no | Memory and video memory in use at the end of the window. |
 | `drawCalls` | no | Average per frame. |
@@ -88,6 +91,29 @@ curl -fsS -X POST "$MANAGER_URL/api/v1/perf/samples" \
 
 The answer's `stored` says how many samples were new (`count`) and how many it already had (`duplicates`).
 
+## Errors and crashes
+
+**Errors, as they happen.** Hook the engine's log (in Unreal, an `FOutputDevice` added to `GLog`) and count errors and failed ensures into each sample's `errors` and `ensures`. Send the messages too, in the samples call's `errorEvents`, with the batch they happened in, not only at exit: a crash loses whatever wasn't sent.
+
+`{"t": 41.2, "kind": "error", "message": "LogTexture: Error: Texture T_Rock is missing", "scene": "forest"}`. `kind` is `error` (the default), `ensure` or `warning`. Send up to 100 per call, and up to 1000 characters per message. The session keeps each distinct message once, with how often it was sent, up to 30 of them, so repeats are cheap. Leave player names, file paths with user names and other personal details out of the message.
+
+**Crashes, on the next launch.** A crashing game can't reliably make an HTTP call, so:
+
+1. At startup, write the new session id to a small file in the game's saved-data folder (in Unreal, under `FPaths::ProjectSavedDir()`). On a clean exit, after sending `"ended": true`, delete it.
+2. At the next startup, if that file is still there, the last run didn't exit cleanly. Before starting the new session, call **session** for the old id, with the old `game` and `machine` and a `crash`:
+   - `reason`: one line: the exception, assert or signal. In Unreal, read the newest folder under `Saved/Crashes/` (its `CrashContext.runtime-xml` has `ErrorMessage` and the callstack). If there is no crash report, send `"reason": "Did not exit cleanly (no crash report)"`.
+   - `callstack`: the callstack as text, up to 16,000 characters.
+   - `t` and `scene`, if the game wrote them to the file as it ran.
+3. Then delete the file and carry on as normal.
+
+```bash
+curl -fsS -X POST "$MANAGER_URL/api/v1/perf/session" \
+  -H "X-Agent-Manager-Key: $GAME_KEY" -H "Content-Type: application/json" \
+  -d '{"sessionId":"0b9c1c1e-6f0a-4c56-9a53-2f8f4d1f7a10","game":"musik","machine":"pc-studio","crash":{"reason":"EXCEPTION_ACCESS_VIOLATION reading address 0x00000000","callstack":"UMyActor::Tick()\nFActorTickFunction::ExecuteTick()","t":312.5,"scene":"forest"}}'
+```
+
+A crashed session ends at the time it was last heard from, and shows as **Crashed** on the Game tab. A session that stopped sending without ending or a crash report shows as **No clean exit**.
+
 ## Getting it right in the game
 
 - **Never let reporting cost frames.** Measure on the main thread (a subtraction per frame), but do the JSON and the HTTP call off it: a background thread, a coroutine, or the engine's async HTTP client. Use a timeout of a few seconds.
@@ -102,7 +128,7 @@ An agent on a PC that is set up with `agentctl` (so with a machine key, not a ga
 
 ```bash
 node "$HOME/.agent-manager/agentctl.js" perf --game musik --limit 20   # one line a session, newest first; --json for JSON
-node "$HOME/.agent-manager/agentctl.js" perf <sessionId>               # the whole session as JSON: totals, worst hitches, samples
+node "$HOME/.agent-manager/agentctl.js" perf <sessionId>               # the whole session as JSON: totals, worst hitches, errors, crash, samples
 ```
 
 Those are `GET $MANAGER_URL/api/v1/perf/sessions?game=&days=&limit=` and `GET $MANAGER_URL/api/v1/perf/session?id=`, with the machine key in `X-Agent-Manager-Key`. If `perf` is an unknown command, the PC has an older `agentctl.js`: download it again as `$MANAGER_URL/instructions.md` describes.
