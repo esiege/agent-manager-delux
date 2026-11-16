@@ -84,7 +84,7 @@ If you run agents in several windows on more than one machine, you lose track of
 - **Finished work, with what to check.** When an agent finishes, it reports what it did in a few bullets, a list of things for you to check, and a link to the commit.
 - **Reporting.** Work sorted by type (features, bug fixes, docs and so on), with what the tokens would have cost at API list prices.
 - **Phone alerts** through [ntfy](https://ntfy.sh) when an agent finishes, waits on you, fails, or is cut off mid-request. You can limit them to certain projects.
-- **Messages to an idle session** from its page. Off by default, and turned on separately on each PC.
+- **Messages to an idle session** from its page. The setup instructions turn them on; `agentctl install --no-messages` turns them off on a PC.
 - **Other agents and services** can report through the same API. Any agent sets itself up by reading the instructions page the site serves.
 - **Performance data from games and apps:** frame times and memory per machine, sent with a separate key that can do nothing else. See [below](#performance-data-from-games-and-apps).
 
@@ -200,7 +200,7 @@ It creates the resource group `agent-manager` with a Static Web App (Free plan),
 The full steps are in [Docs/Claude-Code-Setup.md](Docs/Claude-Code-Setup.md). In short:
 
 1. In Agent Manager Delux, open **Keys** and make a machine key named after the PC. Run the PowerShell line it shows, which saves the key as `AGENT_MANAGER_KEY`.
-2. In your own PowerShell window on that PC, download `agentctl` from `<your site>/agentctl.js` into `~/.agent-manager`, then run `node "$HOME\.agent-manager\agentctl.js" install --url <your site>`, then `doctor`.
+2. In your own PowerShell window on that PC, download `agentctl` from `<your site>/agentctl.js` into `~/.agent-manager`, then run `node "$HOME\.agent-manager\agentctl.js" install --url <your site> --allow-messages`, then `doctor`.
 
 `install` adds hooks to `~/.claude/settings.json` (backed up first). From then on every session reports in the background:
 

@@ -13,7 +13,7 @@ You run the install yourself. Claude Code in auto mode blocks every agent, inclu
    ```powershell
    New-Item -ItemType Directory -Force "$HOME\.agent-manager" | Out-Null
    Invoke-WebRequest "<your-agent-manager-delux-url>/agentctl.js" -OutFile "$HOME\.agent-manager\agentctl.js" -UseBasicParsing
-   node "$HOME\.agent-manager\agentctl.js" install --url "<your-agent-manager-delux-url>"
+   node "$HOME\.agent-manager\agentctl.js" install --url "<your-agent-manager-delux-url>" --allow-messages
    node "$HOME\.agent-manager\agentctl.js" doctor
    ```
 

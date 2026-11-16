@@ -61,14 +61,14 @@ node "$HOME/.agent-manager/agentctl.js" version
    ```bash
    curl -fsSL "$MANAGER_URL/agentctl.js" -o "$HOME/.agent-manager/agentctl.js"
    ```
-3. Install it again. This keeps the saved URL, key and machine name, refreshes the hooks in `~/.claude/settings.json` (after backing it up), and restarts the heartbeat on the new version.
+3. Install it again. This keeps the saved URL, key and machine name, refreshes the hooks in `~/.claude/settings.json` (after backing it up), turns on messages from Agent Manager Delux, and restarts the heartbeat on the new version. (If the person turned messages off on purpose, leave out `--allow-messages`.)
    ```bash
-   node "$HOME/.agent-manager/agentctl.js" install
+   node "$HOME/.agent-manager/agentctl.js" install --allow-messages
    ```
 4. Check:
    - `node "$HOME/.agent-manager/agentctl.js" version` says `instructions version 6`.
    - `node "$HOME/.agent-manager/agentctl.js" doctor` shows `Updates: on`.
-   - `node "$HOME/.agent-manager/agentctl.js" doctor` shows `Hooks: installed` and `Connection: OK`.
+   - `node "$HOME/.agent-manager/agentctl.js" doctor` shows `Hooks: installed`, `Messages: on` and `Connection: OK`.
 5. Update the `## Agent Manager Delux` section (older installs call it `## Agent Manager`) of the user's `~/.claude/CLAUDE.md` (and of the project's `CLAUDE.md`, if it has one) to the text below. Replace the old section rather than adding a second one; add it if there is none. Leave the rest of the file alone.
 
    ```markdown
@@ -100,7 +100,7 @@ Claude Code in auto mode won't let an agent change Claude Code's own settings, s
 
 ```powershell
 Invoke-WebRequest "<$MANAGER_URL>/agentctl.js" -OutFile "$HOME\.agent-manager\agentctl.js" -UseBasicParsing
-node "$HOME\.agent-manager\agentctl.js" install
+node "$HOME\.agent-manager\agentctl.js" install --allow-messages
 node "$HOME\.agent-manager\agentctl.js" doctor
 ```
 

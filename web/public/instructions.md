@@ -43,12 +43,12 @@ One-time setup per PC. It installs a small reporter (`agentctl`) that Claude Cod
    ```bash
    mkdir -p "$HOME/.agent-manager" && curl -fsSL "$MANAGER_URL/agentctl.js" -o "$HOME/.agent-manager/agentctl.js"
    ```
-3. Install it. This checks the URL and key with Agent Manager Delux first, then adds hooks to `~/.claude/settings.json` (after backing it up). Claude Code may ask the person to approve the settings change.
+3. Install it. This checks the URL and key with Agent Manager Delux first, then adds hooks to `~/.claude/settings.json` (after backing it up), and turns on messages from Agent Manager Delux (see "Messages from Agent Manager Delux" below). Claude Code may ask the person to approve the settings change.
    ```bash
-   node "$HOME/.agent-manager/agentctl.js" install --url "$MANAGER_URL"
+   node "$HOME/.agent-manager/agentctl.js" install --url "$MANAGER_URL" --allow-messages
    ```
    On Windows it also finds a key saved for the user even if your shell started before it was saved. Add `--machine <name>` to choose how this PC is named (default: its host name).
-4. Check: `node "$HOME/.agent-manager/agentctl.js" doctor` should show the config, `Hooks: installed` and `Connection: OK`.
+4. Check: `node "$HOME/.agent-manager/agentctl.js" doctor` should show the config, `Hooks: installed`, `Messages: on` and `Connection: OK`.
 5. Tell the person it's done: new Claude Code sessions on this PC appear at `$MANAGER_URL/agents` within a few seconds. Sessions already open start reporting once Claude Code reloads its settings (starting a new session always works).
 
 ### If you can't finish setup yourself
@@ -58,7 +58,7 @@ Claude Code in auto mode won't let an agent change Claude Code's own settings (i
 ```powershell
 New-Item -ItemType Directory -Force "$HOME\.agent-manager" | Out-Null
 Invoke-WebRequest "<$MANAGER_URL>/agentctl.js" -OutFile "$HOME\.agent-manager\agentctl.js" -UseBasicParsing
-node "$HOME\.agent-manager\agentctl.js" install --url "<$MANAGER_URL>"
+node "$HOME\.agent-manager\agentctl.js" install --url "<$MANAGER_URL>" --allow-messages
 node "$HOME\.agent-manager\agentctl.js" doctor
 ```
 
@@ -139,13 +139,13 @@ node "$HOME/.agent-manager/agentctl.js" install --no-auto-update
 
 ### Messages from Agent Manager Delux
 
-The person can send a message to a running session from its page in Agent Manager Delux. agentctl on the session's PC picks it up within about 5 seconds and posts it into the session. This is off by default and is turned on separately on each PC, so turning it on for one PC does nothing for the others:
+The person can send a message to a running session from its page in Agent Manager Delux. agentctl on the session's PC picks it up within about 5 seconds and posts it into the session. Answers to feedback requests arrive the same way. The setup above turns it on. It's set separately on each PC; on a PC set up without it, turn it on with:
 
 ```bash
 node "$HOME/.agent-manager/agentctl.js" install --allow-messages
 ```
 
-(`--no-messages` turns it off again.) A session can take messages only after it has run a hook since messages were turned on, so the person should send it one prompt first. A session that skips permission prompts never takes messages.
+(`--no-messages` turns it off again, if the person doesn't want the site to be able to message this PC's sessions.) A session can take messages only after it has run a hook since messages were turned on, so the person should send it one prompt first. A session that skips permission prompts never takes messages.
 
 If a message stays at "Waiting for the PC" for more than a few seconds, agentctl on that PC isn't collecting it. After 10 minutes it shows as "Expired", without saying why. Run `node "$HOME/.agent-manager/agentctl.js" doctor` **on the PC the session runs on**, and check:
 
