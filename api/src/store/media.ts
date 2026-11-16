@@ -1,4 +1,4 @@
-// Where blocker screenshots and videos are kept. Azure Blob Storage in Azure (its REST API,
+// Where feedback pictures, clips and sounds are kept. Azure Blob Storage in Azure (its REST API,
 // signed with the account key, so the bundle needs no SDK); a folder on disk off Azure.
 // Cosmos documents are capped at 2 MB, which a screenshot can pass and a video always does.
 
@@ -26,7 +26,7 @@ export interface MediaStore {
   delete(name: string): Promise<void>;
 }
 
-/** Names are made by the API (`<blockerId>/<mediaId>`), never by callers. */
+/** Names are made by the API (`<feedbackId>/<mediaId>`), never by callers. */
 const NAME = /^[A-Za-z0-9-]+\/[A-Za-z0-9-]+$/;
 
 function checkName(name: string) {
@@ -188,7 +188,7 @@ let media: MediaStore | undefined;
 
 /**
  * Blob Storage when BLOB_ACCOUNT and BLOB_KEY are set. Otherwise a local folder, which is only
- * allowed off Azure. Null in Azure without storage: blockers still work, without screenshots.
+ * allowed off Azure. Null in Azure without storage: feedback still works, without files.
  */
 export function getMediaStore(env: Record<string, string | undefined>): MediaStore | null {
   if (media) return media;

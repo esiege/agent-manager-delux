@@ -1,14 +1,25 @@
 // Cosmos DB (NoSQL API, serverless) store used in Azure.
 // Containers: agents (/id), keys (/id), alerts (/id), events (/agentId, 30-day TTL),
 // messages (/machine, 1-day TTL), perfSessions (/id, 1-year TTL), perfSamples (/sessionId, 30-day TTL),
-// blockers (/id, 90-day TTL from the last change).
+// blockers (/id, 90-day TTL from the last change; feedback requests, named for the blockers they replaced).
 // infra/main.bicep creates the same containers; ensure() creates them too when they're missing.
 
 import { createHash } from 'node:crypto';
 import { CosmosClient, type Container, type SqlParameter } from '@azure/cosmos';
-import type { Agent, AgentEvent, AgentKind, AgentMessage, AlertSubscription, Blocker, PerfSample, PerfSession } from '@agent-manager-delux/shared';
 import {
-  BLOCKER_RETENTION_SECONDS,
+  FEEDBACK_DONE_STATUSES,
+  feedbackFromStored,
+  type Agent,
+  type AgentEvent,
+  type AgentKind,
+  type AgentMessage,
+  type AlertSubscription,
+  type Feedback,
+  type PerfSample,
+  type PerfSession,
+} from '@agent-manager-delux/shared';
+import {
+  FEEDBACK_RETENTION_SECONDS,
   isReportingEvent,
   MESSAGE_RETENTION_SECONDS,
   PERF_SAMPLE_RETENTION_SECONDS,
@@ -37,7 +48,8 @@ const CONTAINERS = {
   messages: { partitionKey: '/machine', defaultTtl: MESSAGE_RETENTION_SECONDS },
   perfSessions: { partitionKey: '/id', defaultTtl: PERF_SESSION_RETENTION_SECONDS },
   perfSamples: { partitionKey: '/sessionId', defaultTtl: PERF_SAMPLE_RETENTION_SECONDS },
-  blockers: { partitionKey: '/id', defaultTtl: BLOCKER_RETENTION_SECONDS },
+  // Feedback requests. The container keeps the name of the blockers they replaced.
+  blockers: { partitionKey: '/id', defaultTtl: FEEDBACK_RETENTION_SECONDS },
 } as const;
 
 type Name = keyof typeof CONTAINERS;
@@ -229,18 +241,39 @@ export class CosmosStore implements Store {
     return this.query<AgentMessage>('messages', sql, parameters, machine);
   }
 
-  getBlocker(id: string) {
-    return this.read<Blocker>('blockers', id, id);
+  async getFeedback(id: string) {
+    const doc = await this.read<Feedback>('blockers', id, id);
+    return doc && feedbackFromStored(doc);
   }
-  async putBlocker(blocker: Blocker) {
-    await (await this.c('blockers')).items.upsert(blocker);
+  async putFeedback(feedback: Feedback) {
+    await (await this.c('blockers')).items.upsert(feedback);
   }
-  listBlockers(since: string) {
-    return this.query<Blocker>(
+  // Blockers stored before feedback have no history: open ones are still open, answered ones done.
+  async listFeedback(since: string) {
+    const docs = await this.query<Feedback>(
       'blockers',
-      "SELECT * FROM c WHERE c.status = 'open' OR c.resolvedAt >= @since ORDER BY c.createdAt DESC",
-      [{ name: '@since', value: since }],
+      `SELECT * FROM c WHERE c.status = 'open'
+         OR (IS_DEFINED(c.history) AND (NOT ARRAY_CONTAINS(@done, c.status) OR c.updatedAt >= @since))
+         OR (NOT IS_DEFINED(c.history) AND c.resolvedAt >= @since)
+       ORDER BY c.createdAt DESC`,
+      [
+        { name: '@since', value: since },
+        { name: '@done', value: [...FEEDBACK_DONE_STATUSES] },
+      ],
     );
+    return docs.map(feedbackFromStored);
+  }
+  async listFeedbackFor(keyName: string) {
+    const docs = await this.query<Feedback>(
+      'blockers',
+      `SELECT * FROM c WHERE c.keyName = @key AND (c.status = 'open' OR (IS_DEFINED(c.history) AND NOT ARRAY_CONTAINS(@done, c.status)))
+       ORDER BY c.createdAt DESC`,
+      [
+        { name: '@key', value: keyName },
+        { name: '@done', value: [...FEEDBACK_DONE_STATUSES] },
+      ],
+    );
+    return docs.map(feedbackFromStored);
   }
 
   getPerfSession(id: string) {

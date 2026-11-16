@@ -3,7 +3,7 @@ import { OWNER_WRITE_HEADER, type AlertsResponse, type AlertSubscription, type C
 import { headerText, resetAlertState } from '../src/alerts';
 import { resetAuthState } from '../src/auth';
 import { deleteAlert, listAlerts, saveAlert, sweepAlerts, testAlert } from '../src/handlers/alerts';
-import { createBlocker } from '../src/handlers/blockers';
+import { createFeedback } from '../src/handlers/feedback';
 import { heartbeat, report } from '../src/handlers/ingest';
 import { createKey } from '../src/handlers/keys';
 import { agents } from '../src/handlers/read';
@@ -109,10 +109,10 @@ describe('alerts', () => {
       body: { agentId, kind: 'claude-code', machine: 'pc', name: 'musik-4a', project: 'musik', ...body },
     });
 
-  it('says when an agent reports a blocker, linking to the Blockers tab, only to subscriptions that want it', async () => {
+  it('says when an agent asks for feedback, linking to the Feedback tab, only to subscriptions that want it', async () => {
     await subscribe();
     await send({ state: 'working' });
-    const blocker = () => call(createBlocker, 'POST', '/api/v1/blockers', { key, body: { agentId: 'pc/claude/s1', title: 'Need the Steam login' } });
+    const blocker = () => call(createFeedback, 'POST', '/api/v1/feedback', { key, body: { agentId: 'pc/claude/s1', title: 'Need the Steam login' } });
     await blocker();
     expect(fetchMock).not.toHaveBeenCalled();
 
@@ -120,7 +120,7 @@ describe('alerts', () => {
     const res = await blocker();
     const id = (res.body as { stored: { id: string } }).stored.id;
     expect(sent().map((s) => [s.headers.Title, s.headers.Tags, s.headers.Priority, s.headers.Click, s.body])).toEqual([
-      ['musik is blocked', 'construction', 'high', `https://manager.test/blockers?id=${id}`, 'Need the Steam login\nOn pc'],
+      ['musik asks for your feedback', 'speech_balloon', 'high', `https://manager.test/feedback?id=${id}`, 'Need the Steam login\nOn pc'],
     ]);
   });
 

@@ -10,9 +10,14 @@ import {
   REPORTED_STATES,
   WORK_TYPES,
   perfStats,
-  type BlockerDetailResponse,
-  type BlockerMedia,
-  type BlockerResponse,
+  AGENTCTL_COMMAND,
+  FEEDBACK_AGENT_STATUSES,
+  FEEDBACK_STATUS_LABEL,
+  describeFeedback,
+  type FeedbackCreateResponse,
+  type FeedbackDetailResponse,
+  type FeedbackInboxResponse,
+  type FeedbackMedia,
   type PerfSessionDetailResponse,
   type PerfSessionsResponse,
   type ReportInput,
@@ -20,7 +25,16 @@ import {
   type ReportedState,
   type WorkType,
 } from '@agent-manager-delux/shared';
-import { BlockerFileError, captureScreen, describeBlocker, readBlockerFile, type BlockerFile } from './blocker';
+import {
+  FeedbackFileError,
+  QUESTION_FLAGS,
+  captureScreen,
+  questionFromFlag,
+  readFeedbackFile,
+  readForm,
+  type FeedbackFile,
+  type QuestionFlag,
+} from './feedback';
 import { ConfigError, defaultMachineName, loadConfig, type Config } from './config';
 import { ensureDaemon, runDaemon } from './daemon';
 import { logLine, readJsonFile, writeJsonFile } from './files';
@@ -69,15 +83,28 @@ const HELP = `agentctl: reports the Claude Code sessions on this PC to Agent Man
       Reports finished work: the commit (its subject is the title, linked to GitHub), the prompt,
       the summary (Markdown; "-" reads it from stdin) and acceptance checks. Commit first: it
       refuses while there are uncommitted changes, unless --uncommitted.
-  agentctl blocker "<what's in the way>" [--details "<more>"] [--screenshot <file>]... [--video <file>]
-                  [--screen] [--wait <seconds>]
-      Reports something you can't get past without the person (a login, a key, a decision, a
-      broken machine). It shows on the Blockers tab, where they answer it. --details is Markdown
-      ("-" reads it from stdin): what you tried and exactly what you need. --screenshot and --video
-      attach files (PNG, JPEG, WebP, GIF up to 8 MB; MP4, WebM up to 25 MB); --screen captures the
-      whole screen (macOS and Linux). --wait waits up to that many seconds for the answer and prints it.
-  agentctl blocker <id> [--wait <seconds>]
-      Prints whether the blocker is answered, and the answer; --wait waits for it first.
+  agentctl feedback ask "<title>" [--body "<Markdown>"] [--image <file>]... [--video <file>]...
+                  [--audio <file>]... [--screen] [question flags] [--form <file>] [--follows <id>]
+                  [--wait <seconds>]
+      Asks the person for feedback on the Feedback tab: one item, named in the title. --body is
+      Markdown ("-" reads it from stdin): what's built, what changed, what the question is not
+      about, the default you go ahead with if they don't answer. Files: PNG, JPEG, WebP, GIF up to
+      8 MB; MP4, WebM, MP3, WAV, OGG, M4A up to 25 MB. --screen captures the screen (macOS, Linux).
+      Question flags, in order (without any, they get one free-text box):
+        --question "<question>"                    free text
+        --choice "<question>|<option>|<option>*"   pick one; * marks the one you recommend
+        --multi "<question>|<option>|<option>"     pick any
+        --rating "<question>|<low end>|<high end>" a score from 1 to 5
+      --form <file.json> ("-" for stdin) takes the full form instead: a list of questions, each
+      {type: text|choice|rating, prompt, options: [{label, detail, media}], recommended, multiple,
+      max, low, high, media}. Media paths in it are attached for you. --follows <id> makes it a
+      follow-up to an earlier request. --wait waits that many seconds for the answer and prints it.
+  agentctl feedback <id> [--wait <seconds>]
+      Prints the request and the person's answer; reading an answer tells them you've seen it.
+  agentctl feedback status <id> planning|implementing|closed|followup [--note "<text>"]
+      Tells the person what you're doing with their answer. Close it with a note in their words.
+  agentctl feedback list      Your requests that aren't closed yet, and where each one is.
+  agentctl blocker ...        The old name for feedback ask (--details, --screenshot still work).
   agentctl perf [--game <name>] [--days <n>] [--limit <n>] [--json]
       Lists the performance sessions games have sent, newest first, one line a session.
   agentctl perf <sessionId>   Prints one session as JSON: its totals, worst hitches and samples.
@@ -87,7 +114,7 @@ const HELP = `agentctl: reports the Claude Code sessions on this PC to Agent Man
   agentctl daemon             (started by the hooks) Runs the heartbeat.
 
 Exit codes: 0 done, 1 bad usage, 2 not set up, 3 session not found, 4 Agent Manager Delux refused or
-unreachable, 5 uncommitted changes (done), 6 the blocker is still open after --wait.`;
+unreachable, 5 uncommitted changes (done), 6 the feedback request is still unanswered after --wait.`;
 
 class UsageError extends Error {}
 class NotFoundError extends Error {}
@@ -96,12 +123,21 @@ class NotFoundError extends Error {}
 const SWITCHES = new Set(['clear', 'uncommitted', 'allow-messages', 'no-messages', 'json', 'screen']);
 
 /** Flags that can be given more than once; every value is kept in `lists`. */
-const REPEATED = new Set(['check', 'screenshot', 'video']);
+const REPEATED = new Set(['check', 'screenshot', 'image', 'video', 'audio', 'question', 'choice', 'multi', 'rating']);
 
-function parseArgs(argv: string[]): { positional: string[]; flags: Record<string, string>; lists: Record<string, string[]> } {
+interface ParsedArgs {
+  positional: string[];
+  flags: Record<string, string>;
+  lists: Record<string, string[]>;
+  /** Every repeated flag, in the order given (questions keep their order across kinds). */
+  ordered: { name: string; value: string }[];
+}
+
+function parseArgs(argv: string[]): ParsedArgs {
   const positional: string[] = [];
   const flags: Record<string, string> = {};
   const lists: Record<string, string[]> = {};
+  const ordered: ParsedArgs['ordered'] = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
     if (a.startsWith('--')) {
@@ -113,13 +149,16 @@ function parseArgs(argv: string[]): { positional: string[]; flags: Record<string
       const value = inline ?? argv[i + 1];
       if (value === undefined || (inline === undefined && value.startsWith('--'))) throw new UsageError(`--${name} needs a value`);
       flags[name] = value;
-      if (REPEATED.has(name)) (lists[name] ??= []).push(value);
+      if (REPEATED.has(name)) {
+        (lists[name] ??= []).push(value);
+        ordered.push({ name, value });
+      }
       if (inline === undefined) i++;
     } else {
       positional.push(a);
     }
   }
-  return { positional, flags, lists };
+  return { positional, flags, lists, ordered };
 }
 
 function scriptPath(): string {
@@ -334,12 +373,13 @@ async function doneCommand(positional: string[], flags: Record<string, string>, 
   if (!commit && !('uncommitted' in flags)) console.log('No commit was made during this request, so the report has no commit link.');
 }
 
-// ---- blocker ----
+// ---- feedback ----
 
 class StillOpenError extends Error {}
 
-const BLOCKER_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const FEEDBACK_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const WAIT_POLL_MS = 5000;
+const FILE_FLAGS = ['image', 'screenshot', 'video', 'audio'];
 
 function waitSeconds(flags: Record<string, string>): number | null {
   if (!('wait' in flags)) return null;
@@ -348,67 +388,137 @@ function waitSeconds(flags: Record<string, string>): number | null {
   return n;
 }
 
-/** Prints the blocker, waiting up to `seconds` for an answer first. Throws StillOpenError if there's none. */
-async function showBlocker(config: Config, id: string, seconds: number | null) {
+function feedbackIdArg(value: string | undefined, usage: string): string {
+  if (!value || !FEEDBACK_ID.test(value)) throw new UsageError(usage);
+  return value;
+}
+
+/** Prints the request, waiting up to `seconds` for an answer first. Throws StillOpenError if there's none. */
+async function showFeedback(config: Config, id: string, seconds: number | null) {
   const deadline = Date.now() + (seconds ?? 0) * 1000;
   for (;;) {
-    const { blocker } = await get<BlockerDetailResponse>(config, `/blocker?${new URLSearchParams({ id })}`);
-    if (blocker.status !== 'open') {
-      console.log(describeBlocker(blocker));
-      return;
-    }
-    if (Date.now() + WAIT_POLL_MS > deadline) {
-      console.log(describeBlocker(blocker));
-      if (seconds !== null) throw new StillOpenError(`Still open after ${seconds} s. Check again with: agentctl blocker ${id} --wait <seconds>`);
+    const { feedback } = await get<FeedbackDetailResponse>(config, `/feedback/item?${new URLSearchParams({ id })}`);
+    if (feedback.status !== 'open' || Date.now() + WAIT_POLL_MS > deadline) {
+      console.log(describeFeedback(feedback, AGENTCTL_COMMAND));
+      if (feedback.status === 'open' && seconds !== null) {
+        throw new StillOpenError(`Still unanswered after ${seconds} s. Check again with: agentctl feedback ${id} --wait <seconds>`);
+      }
       return;
     }
     await new Promise((r) => setTimeout(r, WAIT_POLL_MS));
   }
 }
 
-/** `agentctl blocker`: report what's in the way, with screenshots or a video, or check on one. */
-async function blockerCommand(positional: string[], flags: Record<string, string>, lists: Record<string, string[]>) {
+function readFormFile(path: string): string {
+  if (!existsSync(path)) throw new UsageError(`No form at ${path}`);
+  return readFileSync(path, 'utf8');
+}
+
+/** `agentctl feedback ask` (and the old `agentctl blocker`): asks, with files and questions. */
+async function askFeedback(args: ParsedArgs, legacy: boolean) {
+  const { positional, flags, ordered } = args;
   const wait = waitSeconds(flags);
-  if (positional.length === 1 && BLOCKER_ID.test(positional[0]!)) {
-    await showBlocker(loadConfig(), positional[0]!, wait);
-    return;
-  }
   const title = positional.join(' ').trim();
   if (!title) {
-    throw new UsageError(`Usage: agentctl blocker "<what's in the way>" [--details "<more>"] [--screenshot <file>] [--screen] [--wait <seconds>]`);
+    throw new UsageError('Usage: agentctl feedback ask "<title>" [--body "<Markdown>"] [--image <file>] [--choice "<question>|a|b*"] ... (see agentctl help)');
   }
-  let details = flags.details?.trim() ?? null;
-  if (details === '-') details = (await readStdin()).trim();
+  let body = (flags.body ?? flags.details)?.trim() ?? null;
+  if (body === '-') body = (await readStdin()).trim();
 
-  // Read every file before reporting, so a bad path doesn't leave a blocker without its picture.
-  const files: BlockerFile[] = [...(lists.screenshot ?? []), ...(lists.video ?? [])].map(readBlockerFile);
+  let questions: Record<string, unknown>[] = ordered
+    .filter((o) => (QUESTION_FLAGS as readonly string[]).includes(o.name))
+    .map((o) => questionFromFlag(o.name as QuestionFlag, o.value));
+  const formFiles: string[] = [];
+  if (flags.form) {
+    if (questions.length) throw new UsageError('Give the questions with --form or with question flags, not both');
+    const text = flags.form === '-' ? await readStdin() : readFormFile(flags.form);
+    const form = readForm(text, flags.form === '-' ? null : flags.form);
+    questions = form.questions;
+    formFiles.push(...form.files);
+    if (!body && form.body) body = form.body;
+  }
+
+  // Read every file before asking, so a bad path doesn't leave a request without its picture.
+  const paths = ordered.filter((o) => FILE_FLAGS.includes(o.name)).map((o) => resolve(o.value));
+  const files: FeedbackFile[] = [...new Set([...paths, ...formFiles])].map(readFeedbackFile);
   if ('screen' in flags) files.push(captureScreen());
 
   const s = findCallingSession();
   const config = loadConfig();
-  const res = await post<BlockerResponse>(config, '/blockers', { agentId: s.agentId, title, details: details || null });
+  const follows = flags.follows ? feedbackIdArg(flags.follows, '--follows takes the id of the earlier request') : null;
+  const res = await post<FeedbackCreateResponse>(config, '/feedback', { agentId: s.agentId, title, body: body || null, questions, follows });
   const id = res.stored.id;
   const attached: string[] = [];
   const missed: string[] = [];
   for (const f of files) {
     try {
-      const path = `/blockers/media?${new URLSearchParams({ id, name: f.name })}`;
-      await postFile<{ stored: BlockerMedia }>(config, path, f.bytes, f.contentType);
+      const path = `/feedback/media?${new URLSearchParams({ id, name: f.name })}`;
+      await postFile<{ stored: FeedbackMedia }>(config, path, f.bytes, f.contentType);
       attached.push(f.name);
     } catch (e) {
       missed.push(`${f.name}: ${(e as Error).message}`);
     }
   }
-  console.log(`Blocker reported for ${s.name}: ${res.blockerUrl}`);
+  console.log(`Feedback requested for ${s.name}: ${res.feedbackUrl}`);
   console.log(`Id: ${id}`);
+  if (res.stored.questions.length) console.log(`Questions: ${res.stored.questions.map((q) => `${q.id} (${q.type})`).join(', ')}`);
   if (attached.length) console.log(`Attached: ${attached.join(', ')}`);
   for (const m of missed) console.log(`Not attached: ${m}`);
   for (const w of res.warnings) console.log(`Note: ${w}`);
+  if (legacy) console.log('agentctl blocker is now agentctl feedback ask; it works the same.');
   if (wait === null) {
-    console.log(`Check for the answer with: agentctl blocker ${id} --wait <seconds>`);
+    console.log(`Don't wait on it: carry on with your default. Read the answer with: agentctl feedback ${id} (add --wait <seconds> to wait)`);
     return;
   }
-  await showBlocker(config, id, wait);
+  await showFeedback(config, id, wait);
+}
+
+/** `agentctl feedback status <id> <status> [--note]`: says what the agent is doing with the answer. */
+async function feedbackStatusCommand(positional: string[], flags: Record<string, string>) {
+  const usage = `Usage: agentctl feedback status <id> ${FEEDBACK_AGENT_STATUSES.filter((x) => x !== 'viewed').join('|')} [--note "<text>"]`;
+  const id = feedbackIdArg(positional[0], usage);
+  const status = positional[1];
+  if (!status || !(FEEDBACK_AGENT_STATUSES as readonly string[]).includes(status)) throw new UsageError(usage);
+  const note = [flags.note, ...positional.slice(2)].filter(Boolean).join(' ').trim() || null;
+  const res = await post<{ stored: FeedbackDetailResponse['feedback'] }>(loadConfig(), '/feedback/status', { id, status, note });
+  console.log(`"${res.stored.title}" is now: ${FEEDBACK_STATUS_LABEL[res.stored.status]}.`);
+  if (status === 'followup' && !res.stored.followedBy) {
+    console.log(`Ask the follow-up questions with: agentctl feedback ask "<title>" --follows ${id} ...`);
+  }
+}
+
+/** `agentctl feedback list`: this PC's requests that aren't closed, and what each needs next. */
+async function feedbackListCommand() {
+  const { feedback } = await get<FeedbackInboxResponse>(loadConfig(), '/feedback/inbox');
+  if (feedback.length === 0) {
+    console.log('No feedback requests in progress from this PC.');
+    return;
+  }
+  for (const f of feedback) {
+    const next =
+      f.status === 'open'
+        ? 'waiting on the person'
+        : f.status === 'sent' || f.status === 'dismissed'
+          ? `answered: read it with agentctl feedback ${f.id}`
+          : `update it with agentctl feedback status ${f.id} <status>`;
+    console.log(`${f.id}  ${FEEDBACK_STATUS_LABEL[f.status].padEnd(18)}  ${f.project ?? f.agentName}: ${f.title}  (${next})`);
+  }
+}
+
+async function feedbackCommand(args: ParsedArgs) {
+  const [sub, ...rest] = args.positional;
+  if (sub === 'ask') return askFeedback({ ...args, positional: rest }, false);
+  if (sub === 'status') return feedbackStatusCommand(rest, args.flags);
+  if (sub === 'list') return feedbackListCommand();
+  if (sub && FEEDBACK_ID.test(sub) && rest.length === 0) return showFeedback(loadConfig(), sub, waitSeconds(args.flags));
+  throw new UsageError('Usage: agentctl feedback ask "<title>" ... | feedback <id> [--wait <seconds>] | feedback status <id> <status> | feedback list');
+}
+
+/** `agentctl blocker`: the old name. "<text>" asks; "<id>" reads. */
+async function blockerCommand(args: ParsedArgs) {
+  const [first] = args.positional;
+  if (args.positional.length === 1 && first && FEEDBACK_ID.test(first)) return showFeedback(loadConfig(), first, waitSeconds(args.flags));
+  return askFeedback(args, true);
 }
 
 // ---- install / uninstall ----
@@ -612,7 +722,8 @@ async function doctorCommand() {
 async function main(argv: string[]): Promise<number> {
   const [command, ...rest] = argv;
   try {
-    const { positional, flags, lists } = parseArgs(rest);
+    const args = parseArgs(rest);
+    const { positional, flags, lists } = args;
     switch (command) {
       case 'hook':
         try {
@@ -640,8 +751,11 @@ async function main(argv: string[]): Promise<number> {
       case 'done':
         await doneCommand(positional, flags, lists);
         return 0;
+      case 'feedback':
+        await feedbackCommand(args);
+        return 0;
       case 'blocker':
-        await blockerCommand(positional, flags, lists);
+        await blockerCommand(args);
         return 0;
       case 'perf':
         await perfCommand(positional, flags);
@@ -672,7 +786,7 @@ async function main(argv: string[]): Promise<number> {
     if (e instanceof SendError) return 4;
     if (e instanceof UncommittedError) return 5;
     if (e instanceof StillOpenError) return 6;
-    if (e instanceof BlockerFileError) return 1;
+    if (e instanceof FeedbackFileError) return 1;
     return 1;
   }
 }

@@ -2,9 +2,20 @@
 // Never used in Azure: see store/index.ts.
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import type { Agent, AgentEvent, AgentKind, AgentMessage, AlertSubscription, Blocker, PerfSample, PerfSession } from '@agent-manager-delux/shared';
 import {
-  BLOCKER_RETENTION_SECONDS,
+  FEEDBACK_DONE_STATUSES,
+  feedbackFromStored,
+  type Agent,
+  type AgentEvent,
+  type AgentKind,
+  type AgentMessage,
+  type AlertSubscription,
+  type Feedback,
+  type PerfSample,
+  type PerfSession,
+} from '@agent-manager-delux/shared';
+import {
+  FEEDBACK_RETENTION_SECONDS,
   isReportingEvent,
   MESSAGE_RETENTION_SECONDS,
   PERF_SAMPLE_RETENTION_SECONDS,
@@ -27,8 +38,11 @@ export interface Snapshot {
   /** Missing in files saved before performance data existed. */
   perfSessions?: PerfSession[];
   perfSamples?: PerfSample[];
-  /** Missing in files saved before blockers existed. */
-  blockers?: Blocker[];
+  /**
+   * Feedback requests. Named for blockers, which they replaced: files saved before hold those,
+   * and they're read with feedbackFromStored. Missing in files saved before blockers existed.
+   */
+  blockers?: Feedback[];
 }
 
 export class MemoryStore implements Store {
@@ -39,7 +53,7 @@ export class MemoryStore implements Store {
   private messages: AgentMessage[] = [];
   private perfSessions = new Map<string, PerfSession>();
   private perfSamples = new Map<string, PerfSample>();
-  private blockers = new Map<string, Blocker>();
+  private feedback = new Map<string, Feedback>();
 
   constructor(
     private readonly file?: string,
@@ -54,7 +68,7 @@ export class MemoryStore implements Store {
       this.messages = snap.messages ?? [];
       for (const p of snap.perfSessions ?? []) this.perfSessions.set(p.id, p);
       for (const p of snap.perfSamples ?? []) this.perfSamples.set(p.id, p);
-      for (const b of snap.blockers ?? []) this.blockers.set(b.id, b);
+      for (const b of snap.blockers ?? []) this.feedback.set(b.id, feedbackFromStored(b));
       this.prune();
     }
   }
@@ -68,7 +82,7 @@ export class MemoryStore implements Store {
     const ago = (seconds: number) => new Date(this.now().getTime() - seconds * 1000).toISOString();
     for (const [id, p] of this.perfSessions) if (p.lastSeen < ago(PERF_SESSION_RETENTION_SECONDS)) this.perfSessions.delete(id);
     for (const [id, p] of this.perfSamples) if (p.receivedAt < ago(PERF_SAMPLE_RETENTION_SECONDS)) this.perfSamples.delete(id);
-    for (const [id, b] of this.blockers) if ((b.resolvedAt ?? b.createdAt) < ago(BLOCKER_RETENTION_SECONDS)) this.blockers.delete(id);
+    for (const [id, f] of this.feedback) if (f.updatedAt < ago(FEEDBACK_RETENTION_SECONDS)) this.feedback.delete(id);
   }
 
   private save() {
@@ -81,7 +95,7 @@ export class MemoryStore implements Store {
       messages: this.messages,
       perfSessions: [...this.perfSessions.values()],
       perfSamples: [...this.perfSamples.values()],
-      blockers: [...this.blockers.values()],
+      blockers: [...this.feedback.values()],
     };
     writeFileSync(this.file, JSON.stringify(snap));
   }
@@ -164,18 +178,28 @@ export class MemoryStore implements Store {
     );
   }
 
-  async getBlocker(id: string) {
-    return structuredClone(this.blockers.get(id) ?? null);
+  async getFeedback(id: string) {
+    const f = this.feedback.get(id);
+    return f ? feedbackFromStored(structuredClone(f)) : null;
   }
-  async putBlocker(blocker: Blocker) {
-    this.blockers.set(blocker.id, structuredClone(blocker));
+  async putFeedback(feedback: Feedback) {
+    this.feedback.set(feedback.id, structuredClone(feedback));
     this.prune();
     this.save();
   }
-  async listBlockers(since: string) {
+  async listFeedback(since: string) {
     return structuredClone(
-      [...this.blockers.values()]
-        .filter((b) => b.status === 'open' || (b.resolvedAt !== null && b.resolvedAt >= since))
+      [...this.feedback.values()]
+        .map(feedbackFromStored)
+        .filter((f) => !FEEDBACK_DONE_STATUSES.includes(f.status) || f.updatedAt >= since)
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+    );
+  }
+  async listFeedbackFor(keyName: string) {
+    return structuredClone(
+      [...this.feedback.values()]
+        .map(feedbackFromStored)
+        .filter((f) => f.keyName === keyName && !FEEDBACK_DONE_STATUSES.includes(f.status))
         .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
     );
   }

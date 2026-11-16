@@ -8,7 +8,7 @@ import {
   type AlertChannel,
   type AlertEvent,
   type AlertSubscription,
-  type Blocker,
+  type Feedback,
 } from '@agent-manager-delux/shared';
 import type { Ctx } from './http';
 
@@ -32,14 +32,14 @@ const VERBS: Record<AlertEvent, string> = {
   waiting: 'needs you',
   failed: 'failed',
   unfinished: 'was cut off',
-  blocker: 'is blocked',
+  blocker: 'asks for your feedback',
 };
 const TAGS: Record<AlertMessage['event'], string> = {
   finished: 'white_check_mark',
   waiting: 'hourglass',
   failed: 'rotating_light',
   unfinished: 'warning',
-  blocker: 'construction',
+  blocker: 'speech_balloon',
   test: 'bell',
 };
 
@@ -194,25 +194,25 @@ async function send(ctx: Ctx, subs: AlertSubscription[], agent: Agent, found: De
   return jobs.length;
 }
 
-export function blockersPage(origin: string, blockerId: string): string {
-  return `${origin}/blockers?${new URLSearchParams({ id: blockerId }).toString()}`;
+export function feedbackPage(origin: string, feedbackId: string): string {
+  return `${origin}/feedback?${new URLSearchParams({ id: feedbackId }).toString()}`;
 }
 
-/** Tells subscriptions about a new blocker. Never throws. */
-export async function notifyBlocker(ctx: Ctx, blocker: Blocker, origin: string): Promise<void> {
+/** Tells subscriptions about a new feedback request (the "blocker" event). Never throws. */
+export async function notifyFeedback(ctx: Ctx, feedback: Feedback, origin: string): Promise<void> {
   try {
-    const subs = (await ctx.store.listAlerts()).filter((s) => wants(s, blocker, 'blocker'));
+    const subs = (await ctx.store.listAlerts()).filter((s) => wants(s, feedback, 'blocker'));
     if (subs.length === 0) return;
     const msg: AlertMessage = {
       event: 'blocker',
-      title: maskSecrets(`${blocker.project || blocker.agentName} ${VERBS.blocker}`),
-      body: clip(maskSecrets(`${blocker.title}
-On ${blocker.machine}`), BODY_LENGTH),
-      click: blockersPage(origin, blocker.id),
+      title: maskSecrets(`${feedback.project || feedback.agentName} ${VERBS.blocker}`),
+      body: clip(maskSecrets(`${feedback.title}
+On ${feedback.machine}`), BODY_LENGTH),
+      click: feedbackPage(origin, feedback.id),
     };
     await Promise.allSettled(subs.map((s) => deliver(ctx, s, msg)));
   } catch (e) {
-    console.error(`Blocker alert failed for ${blocker.id}: ${(e as Error).message}`);
+    console.error(`Feedback alert failed for ${feedback.id}: ${(e as Error).message}`);
   }
 }
 

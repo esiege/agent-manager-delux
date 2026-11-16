@@ -4,9 +4,9 @@
 export const API_BASE = '/api/v1';
 
 /** Bump when Docs/instructions.md changes in a way agents must act on (I-05). */
-export const INSTRUCTIONS_VERSION = 3;
+export const INSTRUCTIONS_VERSION = 4;
 /** When the instructions and agentctl last changed. web/public/update.md shows the same date. */
-export const INSTRUCTIONS_UPDATED = '2026-10-26';
+export const INSTRUCTIONS_UPDATED = '2026-11-15';
 
 export const AGENT_KINDS = ['claude-code', 'openclaw', 'service', 'other'] as const;
 export type AgentKind = (typeof AGENT_KINDS)[number];
@@ -26,7 +26,8 @@ export type TurnOutcome = (typeof TURN_OUTCOMES)[number];
 
 /**
  * What an alert subscription can be told about. "unfinished": interrupted, or lost mid-request.
- * "blocker": an agent reported something it can't get past without the owner.
+ * "blocker": an agent asked for feedback (the name is from when the Feedback tab was Blockers;
+ * saved subscriptions hold it, so it stays).
  */
 export const ALERT_EVENTS = ['finished', 'waiting', 'failed', 'unfinished', 'blocker'] as const;
 export type AlertEvent = (typeof ALERT_EVENTS)[number];
@@ -83,15 +84,24 @@ export const LIMITS = {
   /** Single slow frames in one call, and the worst of them kept on a session. */
   perfHitchesPerCall: 200,
   perfHitchesKept: 50,
-  /** A blocker's one-line description, and the longer one. */
-  blockerTitleLength: 200,
-  blockerDetailsLength: 8000,
-  /** The owner's answer to a blocker. */
-  blockerResolutionLength: 4000,
-  /** Screenshots and videos on one blocker. */
-  blockerMedia: 6,
-  blockerImageBytes: 8 * 1024 * 1024,
-  blockerVideoBytes: 25 * 1024 * 1024,
+  /** A feedback request's one-line title, and its Markdown body. */
+  feedbackTitleLength: 200,
+  feedbackBodyLength: 8000,
+  feedbackQuestions: 8,
+  feedbackPromptLength: 500,
+  feedbackOptions: 8,
+  feedbackOptionLength: 200,
+  feedbackOptionDetailLength: 500,
+  feedbackRatingMax: 10,
+  /** The owner's answer to one text question, and their note. */
+  feedbackAnswerLength: 4000,
+  /** A note the agent sends with a status. */
+  feedbackStatusNoteLength: 1000,
+  /** Pictures, clips and sounds on one request. */
+  feedbackMedia: 12,
+  feedbackImageBytes: 8 * 1024 * 1024,
+  /** Videos and sounds. */
+  feedbackClipBytes: 25 * 1024 * 1024,
 } as const;
 
 /** Owner calls that change something must carry this header, which another site can't add (CSRF). */
@@ -246,7 +256,8 @@ export interface AgentView extends Agent {
   runningChildren: number;
 }
 
-export type AgentEventType = 'report' | 'state' | 'action' | 'result' | 'turn' | 'message' | 'blocker';
+/** "blocker" is on events from before feedback replaced blockers. */
+export type AgentEventType = 'report' | 'state' | 'action' | 'result' | 'turn' | 'message' | 'blocker' | 'feedback';
 
 export interface AgentEvent {
   id: string;
@@ -346,6 +357,8 @@ export interface AgentMessage {
   doneAt: string | null;
   /** Why it failed. */
   reason: string | null;
+  /** The feedback request whose answer it carries: delivering it marks the request viewed. */
+  feedbackId?: string | null;
 }
 
 /** POST /api/v1/messages, as the owner. */
@@ -387,106 +400,213 @@ export interface HideAgentsResponse {
   agentIds: string[];
 }
 
-// ---- Blockers: what an agent can't get past without the owner ----
+// ---- Feedback: an agent asks the owner, the owner answers, the agent reports what it did ----
 
-/** "open" until the owner answers it ("resolved") or waves it off ("dismissed"). */
-export const BLOCKER_STATUSES = ['open', 'resolved', 'dismissed'] as const;
-export type BlockerStatus = (typeof BLOCKER_STATUSES)[number];
+/**
+ * Where a feedback request is. The owner moves it from "open" to "sent" (answered) or "dismissed"
+ * (no opinion: use your default). The agent then moves it on: "viewed" (it read the answer: set on
+ * its own when it does), "planning", "implementing", and finally "closed" (done as asked) or
+ * "followup" (it has more questions, in a new request that follows this one).
+ */
+export const FEEDBACK_STATUSES = ['open', 'sent', 'dismissed', 'viewed', 'planning', 'implementing', 'closed', 'followup'] as const;
+export type FeedbackStatus = (typeof FEEDBACK_STATUSES)[number];
 
-/** What a blocker can show. Anything else is refused, so the page never renders unknown types. */
-export const BLOCKER_MEDIA_TYPES = {
+/** The statuses an agent sets with POST /feedback/status. "viewed" is also set on its own. */
+export const FEEDBACK_AGENT_STATUSES = ['viewed', 'planning', 'implementing', 'closed', 'followup'] as const;
+export type FeedbackAgentStatus = (typeof FEEDBACK_AGENT_STATUSES)[number];
+
+/** Nothing more happens to a request in these. */
+export const FEEDBACK_DONE_STATUSES: readonly FeedbackStatus[] = ['closed', 'followup'];
+
+/** What a request can show. Anything else is refused, so the page never renders unknown types. */
+export const FEEDBACK_MEDIA_TYPES = {
   'image/png': 'image',
   'image/jpeg': 'image',
   'image/webp': 'image',
   'image/gif': 'image',
   'video/mp4': 'video',
   'video/webm': 'video',
+  'audio/mpeg': 'audio',
+  'audio/wav': 'audio',
+  'audio/ogg': 'audio',
+  'audio/mp4': 'audio',
+  'audio/webm': 'audio',
 } as const;
-export type BlockerMediaType = keyof typeof BLOCKER_MEDIA_TYPES;
+export type FeedbackMediaType = keyof typeof FEEDBACK_MEDIA_TYPES;
+export type FeedbackMediaKind = (typeof FEEDBACK_MEDIA_TYPES)[FeedbackMediaType];
 
-/** Resolved and dismissed blockers stay listed this long. */
-export const BLOCKER_RECENT_DAYS = 7;
+/** Closed and followed-up requests stay listed this long after their last change. */
+export const FEEDBACK_RECENT_DAYS = 7;
 
-/** A screenshot or video attached to a blocker. The bytes are fetched from /blockers/media. */
-export interface BlockerMedia {
+/** A picture, clip or sound attached to a request. The bytes are fetched from /feedback/media. */
+export interface FeedbackMedia {
   id: string;
-  contentType: BlockerMediaType;
-  kind: 'image' | 'video';
+  contentType: FeedbackMediaType;
+  kind: FeedbackMediaKind;
   bytes: number;
-  /** The file's name on the agent's PC, without its folder. */
+  /** The file's name on the agent's PC, without its folder. Questions and options refer to files by it. */
   name: string | null;
   at: string;
 }
 
-export interface Blocker {
+/** One choice in a "choice" question. */
+export interface FeedbackOption {
+  id: string;
+  label: string;
+  /** A line under the label. */
+  detail?: string | null;
+  /** The name of an attached image, video or sound that shows this option (an A/B pick). */
+  media?: string | null;
+}
+
+interface FeedbackQuestionBase {
+  id: string;
+  /** What to decide, in one or two lines. */
+  prompt: string;
+  /** Names of attached files to show with this question. */
+  media?: string[];
+}
+
+/** Free text. */
+export interface FeedbackTextQuestion extends FeedbackQuestionBase {
+  type: 'text';
+  placeholder?: string | null;
+}
+
+/** Pick one option, or several with `multiple`. The recommended one starts picked. */
+export interface FeedbackChoiceQuestion extends FeedbackQuestionBase {
+  type: 'choice';
+  options: FeedbackOption[];
+  multiple?: boolean;
+  /** The option id the agent recommends. */
+  recommended?: string | null;
+}
+
+/** A score from 1 to `max`, with words for the two ends. */
+export interface FeedbackRatingQuestion extends FeedbackQuestionBase {
+  type: 'rating';
+  max: number;
+  low?: string | null;
+  high?: string | null;
+}
+
+export type FeedbackQuestion = FeedbackTextQuestion | FeedbackChoiceQuestion | FeedbackRatingQuestion;
+export const FEEDBACK_QUESTION_TYPES = ['text', 'choice', 'rating'] as const;
+
+/** An answer to one question: text, an option id, option ids (multiple), or a score. */
+export type FeedbackAnswerValue = string | string[] | number;
+
+export interface FeedbackResponse {
+  /** By question id. Questions left unanswered are missing. */
+  answers: Record<string, FeedbackAnswerValue>;
+  /** Anything else the owner wrote. */
+  note: string | null;
+  /** The owner's login. */
+  by: string;
+  at: string;
+}
+
+/** One step in a request's life, shown as a panel on its card. */
+export interface FeedbackStep {
+  status: FeedbackStatus;
+  at: string;
+  /** The owner's login, or the agent's name. */
+  by: string;
+  /** What the agent or owner said with it: "Built as asked in v0.18". */
+  note: string | null;
+}
+
+export interface Feedback {
   id: string;
   agentId: string;
-  /** The agent as it was when it reported the blocker. */
+  /** The agent as it was when it asked. */
   agentName: string;
   kind: AgentKind;
   project: string | null;
   machine: string;
-  /** One line: what's in the way. */
+  /** One line: the item, named ("New Clunk: Beaverlogger"). */
   title: string;
-  /** More about it, in Markdown: what was tried, what the agent needs. */
-  details: string | null;
-  media: BlockerMedia[];
-  status: BlockerStatus;
+  /** More about it, in Markdown: what's built, what changed, what the question isn't about. */
+  body: string | null;
+  questions: FeedbackQuestion[];
+  media: FeedbackMedia[];
+  status: FeedbackStatus;
   createdAt: string;
-  /** When it was resolved or dismissed. */
-  resolvedAt: string | null;
-  /** The owner's login. */
-  resolvedBy: string | null;
-  /** The owner's answer, which the agent reads. */
-  resolution: string | null;
-  /** How the answer reaches the agent, in a few words; set when it's resolved. */
+  /** The last step's time. */
+  updatedAt: string;
+  /** Every step so far, oldest first; the first is "open". */
+  history: FeedbackStep[];
+  /** The owner's answer, once sent. */
+  response: FeedbackResponse | null;
+  /** The request this one follows up on. */
+  follows: string | null;
+  /** The request that followed up on this one. */
+  followedBy: string | null;
+  /** How the answer reaches the agent, in a few words; set when it's answered. */
   delivery: string | null;
   /** The message that carries the answer to the session, when one was sent. */
   messageId: string | null;
-  /** Name of the machine key that reported it. Only that key can add media to it. */
+  /** Name of the machine key that asked. Only that key can add media to it or move it on. */
   keyName: string;
 }
 
-/** POST /api/v1/blockers, with a machine key. */
-export interface BlockerInput {
+/** POST /api/v1/feedback, with a machine key. */
+export interface FeedbackInput {
   agentId: string;
   title: string;
-  details?: string | null;
+  body?: string | null;
+  /** Ids are optional: q1, q2… and 1, 2… are filled in. */
+  questions?: unknown[];
+  follows?: string | null;
   test?: boolean;
 }
 
-export interface BlockerResponse extends WriteResponse<Blocker> {
-  /** The Blockers tab, where the owner answers it. */
-  blockerUrl: string;
+export interface FeedbackCreateResponse extends WriteResponse<Feedback> {
+  /** The Feedback tab, where the owner answers it. */
+  feedbackUrl: string;
 }
 
-/** POST /api/v1/blockers/resolve, as the owner. */
-export interface ResolveBlockerInput {
+/** POST /api/v1/feedback/respond, as the owner. "close" ends a request the agent never closed. */
+export interface RespondFeedbackInput {
   id: string;
-  status: 'resolved' | 'dismissed';
-  resolution?: string | null;
+  action: 'send' | 'dismiss' | 'close';
+  answers?: Record<string, FeedbackAnswerValue>;
+  note?: string | null;
 }
 
-/** GET /api/v1/blockers: open ones, then those answered in the last BLOCKER_RECENT_DAYS. */
-export interface BlockersResponse {
+/** POST /api/v1/feedback/status, with the machine key that asked. */
+export interface FeedbackStatusInput {
+  id: string;
+  status: FeedbackAgentStatus;
+  note?: string | null;
+}
+
+/** GET /api/v1/feedback: everything not done, then what finished in the last FEEDBACK_RECENT_DAYS. */
+export interface FeedbackListResponse {
   now: string;
-  blockers: Blocker[];
+  feedback: Feedback[];
   /** The messages that carried answers to sessions, so the page can say whether they arrived. */
   messages: AgentMessage[];
-  /** The agents with open blockers, by id: how they are now, and whether an answer can reach them. */
-  agents: Record<string, BlockerAgentStatus>;
+  /** The agents with open requests, by id: how they are now, and whether an answer can reach them. */
+  agents: Record<string, FeedbackAgentInfo>;
 }
 
-export interface BlockerAgentStatus {
+export interface FeedbackAgentInfo {
   state: AgentState;
   /** Why an answer can't go to the session as a message, or null when it can. */
   noMessages: string | null;
 }
 
-/** GET /api/v1/blocker?id=, as the owner or with a machine key. */
-export interface BlockerDetailResponse {
+/** GET /api/v1/feedback/item?id=, as the owner or with a machine key. */
+export interface FeedbackDetailResponse {
   now: string;
-  blocker: Blocker;
+  feedback: Feedback;
+}
+
+/** GET /api/v1/feedback/inbox, with a machine key: this key's requests that are answered and not done. */
+export interface FeedbackInboxResponse {
+  now: string;
+  feedback: Feedback[];
 }
 
 // ---- Responses ----

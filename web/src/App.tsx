@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react';
-import { Route, Routes } from 'react-router';
+import { Navigate, Route, Routes, useLocation } from 'react-router';
 import { AppLayout } from './components/AppLayout';
 import { AuthGate } from './components/AuthGate';
 import { TableSkeleton } from './components/States';
@@ -11,13 +11,19 @@ import { NotFoundPage } from './pages/NotFoundPage';
 import { OverviewPage } from './pages/OverviewPage';
 import { SettingsPage } from './pages/SettingsPage';
 
-// The Markdown renderer is only needed on the Instructions and Blockers tabs.
+// The Markdown renderer is only needed on the Instructions and Feedback tabs.
 // The charts are only needed on the Reporting and Game tabs.
 const ReportingPage = lazy(() => import('./pages/ReportingPage').then((m) => ({ default: m.ReportingPage })));
 const PerformancePage = lazy(() => import('./pages/PerformancePage').then((m) => ({ default: m.PerformancePage })));
 const PerfSessionPage = lazy(() => import('./pages/PerfSessionPage').then((m) => ({ default: m.PerfSessionPage })));
-const BlockersPage = lazy(() => import('./pages/BlockersPage').then((m) => ({ default: m.BlockersPage })));
+const FeedbackPage = lazy(() => import('./pages/FeedbackPage').then((m) => ({ default: m.FeedbackPage })));
 const InstructionsPage = lazy(() => import('./pages/InstructionsPage').then((m) => ({ default: m.InstructionsPage })));
+
+/** The Feedback tab was Blockers: old alert links (/blockers?id=…) land on the same request. */
+function BlockersRedirect() {
+  const { search } = useLocation();
+  return <Navigate to={`/feedback${search}`} replace />;
+}
 
 export function App() {
   return (
@@ -27,13 +33,14 @@ export function App() {
           <Route index element={<OverviewPage />} />
           <Route path="dashboard" element={<DashboardPage />} />
           <Route
-            path="blockers"
+            path="feedback"
             element={
               <Suspense fallback={<TableSkeleton rows={10} />}>
-                <BlockersPage />
+                <FeedbackPage />
               </Suspense>
             }
           />
+          <Route path="blockers" element={<BlockersRedirect />} />
           <Route
             path="reporting"
             element={

@@ -17,10 +17,10 @@ import {
   IconChartHistogram,
   IconCompass,
   IconGauge,
-  IconHandStop,
   IconKey,
   IconLayoutDashboard,
   IconLogout,
+  IconMessageQuestion,
   IconRadar2,
   IconRobot,
 } from '@tabler/icons-react';
@@ -35,7 +35,7 @@ import { ThemeSwitch } from './ThemeSwitch';
 const TABS = [
   { to: '/', label: 'Overview', icon: IconRadar2 },
   { to: '/dashboard', label: 'Dashboard', icon: IconLayoutDashboard },
-  { to: '/blockers', label: 'Blockers', icon: IconHandStop },
+  { to: '/feedback', label: 'Feedback', icon: IconMessageQuestion },
   { to: '/reporting', label: 'Reporting', icon: IconChartHistogram },
   { to: '/performance', label: 'Game', icon: IconGauge },
   { to: '/agents', label: 'Agents', icon: IconRobot },
@@ -44,25 +44,25 @@ const TABS = [
   { to: '/settings', label: 'Settings', icon: IconAdjustmentsHorizontal },
 ] as const;
 
-const BLOCKER_COUNT_MS = 20_000;
+const FEEDBACK_COUNT_MS = 20_000;
 
 /**
- * How many blockers are open, for the tab's badge. Quiet on errors: the pages say when the API
+ * How many feedback requests wait on you, for the tab's badge. Quiet on errors: the pages say when the API
  * is unreachable. Reloads on navigation, so answering one updates the badge.
  */
-function useOpenBlockers(pathname: string): number {
+function useOpenFeedback(pathname: string): number {
   const [count, setCount] = useState(0);
   useEffect(() => {
     const controller = new AbortController();
     const load = () => {
       if (document.visibilityState !== 'visible') return;
       api
-        .blockers(controller.signal)
-        .then((r) => setCount(r.blockers.filter((b) => b.status === 'open').length))
+        .feedback(controller.signal)
+        .then((r) => setCount(r.feedback.filter((f) => f.status === 'open').length))
         .catch(() => {});
     };
     load();
-    const timer = setInterval(load, BLOCKER_COUNT_MS);
+    const timer = setInterval(load, FEEDBACK_COUNT_MS);
     document.addEventListener('visibilitychange', load);
     return () => {
       controller.abort();
@@ -76,7 +76,7 @@ function useOpenBlockers(pathname: string): number {
 export function AppLayout() {
   const me = useMe();
   const { pathname } = useLocation();
-  const openBlockers = useOpenBlockers(pathname);
+  const openFeedback = useOpenFeedback(pathname);
   const { headerTone } = useSiteTheme();
 
   return (
@@ -116,9 +116,9 @@ export function AppLayout() {
                   <span className="am-nav-label" data-label={label}>
                     {label}
                   </span>
-                  {to === '/blockers' && openBlockers > 0 && (
-                    <Badge size="xs" circle color="red" aria-label={`${openBlockers} open`}>
-                      {openBlockers}
+                  {to === '/feedback' && openFeedback > 0 && (
+                    <Badge size="xs" circle color="red" aria-label={`${openFeedback} waiting on you`}>
+                      {openFeedback}
                     </Badge>
                   )}
                 </span>

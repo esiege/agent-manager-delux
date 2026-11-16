@@ -26,7 +26,7 @@ export interface Ctx {
   store: Store;
   now: () => Date;
   env: Record<string, string | undefined>;
-  /** Where blocker screenshots and videos go; null when none is set up. */
+  /** Where feedback pictures, clips and sounds go; null when none is set up. */
   media?: MediaStore | null;
 }
 

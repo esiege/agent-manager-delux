@@ -13,7 +13,17 @@ import { ackMessage, inbox, sendMessage } from './handlers/messages';
 import { hideAgents } from './handlers/hide';
 import { reporting } from './handlers/reporting';
 import { perfSamples, perfSession, perfSessionDetail, perfSessions } from './handlers/perf';
-import { addBlockerMedia, blocker, blockerMedia, blockers, createBlocker, resolveBlocker } from './handlers/blockers';
+import {
+  addFeedbackMedia,
+  createFeedback,
+  feedbackInbox,
+  feedbackItem,
+  feedbackList,
+  feedbackMedia,
+  feedbackStatus,
+  legacyBlocker,
+  respondFeedback,
+} from './handlers/feedback';
 
 function register(name: string, method: 'GET' | 'POST', route: string, handler: Handler) {
   app.http(name, {
@@ -70,12 +80,18 @@ register('deleteAlert', 'POST', 'v1/alerts/delete', deleteAlert);
 register('testAlert', 'POST', 'v1/alerts/test', testAlert);
 register('sweepAlerts', 'POST', 'v1/alerts/sweep', sweepAlerts);
 
-register('createBlocker', 'POST', 'v1/blockers', createBlocker);
-register('addBlockerMedia', 'POST', 'v1/blockers/media', addBlockerMedia);
-register('blockers', 'GET', 'v1/blockers', blockers);
-register('blocker', 'GET', 'v1/blocker', blocker);
-register('blockerMedia', 'GET', 'v1/blockers/media', blockerMedia);
-register('resolveBlocker', 'POST', 'v1/blockers/resolve', resolveBlocker);
+register('createFeedback', 'POST', 'v1/feedback', createFeedback);
+register('addFeedbackMedia', 'POST', 'v1/feedback/media', addFeedbackMedia);
+register('feedbackList', 'GET', 'v1/feedback', feedbackList);
+register('feedbackItem', 'GET', 'v1/feedback/item', feedbackItem);
+register('feedbackInbox', 'GET', 'v1/feedback/inbox', feedbackInbox);
+register('feedbackMedia', 'GET', 'v1/feedback/media', feedbackMedia);
+register('feedbackStatus', 'POST', 'v1/feedback/status', feedbackStatus);
+register('respondFeedback', 'POST', 'v1/feedback/respond', respondFeedback);
+// What agentctl versions from before feedback call.
+register('createBlocker', 'POST', 'v1/blockers', createFeedback);
+register('addBlockerMedia', 'POST', 'v1/blockers/media', addFeedbackMedia);
+register('blocker', 'GET', 'v1/blocker', legacyBlocker);
 
 register('sendMessage', 'POST', 'v1/messages', sendMessage);
 register('inbox', 'POST', 'v1/inbox', inbox);

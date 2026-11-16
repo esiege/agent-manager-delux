@@ -7,7 +7,7 @@ import {
   type AgentKind,
   type AgentMessage,
   type AlertSubscription,
-  type Blocker,
+  type Feedback,
   type KeyScope,
   type MachineKey,
   type MessageStatus,
@@ -46,11 +46,11 @@ export function isReportingEvent(e: AgentEvent): boolean {
 export const MESSAGE_RETENTION_SECONDS = 86_400;
 
 /**
- * Blockers are kept this long after their last change, open or not. Their screenshots and videos
- * are deleted on the same schedule (infra/main.bicep sets a lifecycle rule on the blob container).
+ * Feedback requests are kept this long after their last change, open or not. Their files are
+ * deleted on the same schedule (infra/main.bicep sets a lifecycle rule on the blob container).
  */
-export const BLOCKER_RETENTION_DAYS = 90;
-export const BLOCKER_RETENTION_SECONDS = BLOCKER_RETENTION_DAYS * 86_400;
+export const FEEDBACK_RETENTION_DAYS = 90;
+export const FEEDBACK_RETENTION_SECONDS = FEEDBACK_RETENTION_DAYS * 86_400;
 
 /** Performance sessions are small and carry their totals; samples are the bulk. Counted from the last write. */
 export const PERF_SESSION_RETENTION_SECONDS = PERF_MAX_DAYS * 86_400;
@@ -84,10 +84,13 @@ export interface Store {
   /** The messages for agents on one machine, newest first. */
   listMessages(machine: string, filter: MessageFilter): Promise<AgentMessage[]>;
 
-  getBlocker(id: string): Promise<Blocker | null>;
-  putBlocker(blocker: Blocker): Promise<void>;
-  /** Open blockers, and those resolved or dismissed at or after `since`, newest first. */
-  listBlockers(since: string): Promise<Blocker[]>;
+  /** Requests stored as blockers, before feedback, come back as Feedback (feedbackFromStored). */
+  getFeedback(id: string): Promise<Feedback | null>;
+  putFeedback(feedback: Feedback): Promise<void>;
+  /** Requests not closed or followed up, and those changed at or after `since`, newest first. */
+  listFeedback(since: string): Promise<Feedback[]>;
+  /** One machine key's requests that aren't closed or followed up, newest first. */
+  listFeedbackFor(keyName: string): Promise<Feedback[]>;
 
   getPerfSession(id: string): Promise<PerfSession | null>;
   putPerfSession(session: PerfSession): Promise<void>;

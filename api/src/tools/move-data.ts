@@ -12,12 +12,12 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { CosmosClient, type Database } from '@azure/cosmos';
-import type { Blocker } from '@agent-manager-delux/shared';
+import type { Feedback } from '@agent-manager-delux/shared';
 import { eventDoc, fromAgentDoc, toAgentDoc } from '../store/cosmos';
 import { BlobMediaStore, FolderMediaStore, type MediaStore } from '../store/media';
 import type { Snapshot } from '../store/memory';
 import {
-  BLOCKER_RETENTION_SECONDS,
+  FEEDBACK_RETENTION_SECONDS,
   isReportingEvent,
   PERF_SAMPLE_RETENTION_SECONDS,
   PERF_SESSION_RETENTION_SECONDS,
@@ -62,7 +62,7 @@ export function toCloud(snap: Snapshot, now = new Date()): CloudPlan {
     keys: snap.keys.map((k) => ({ ...k })),
     alerts: (snap.alerts ?? []).map((a) => ({ ...a })),
     agents: snap.agents.map((a) => ({ ...toAgentDoc(a) })),
-    blockers: (snap.blockers ?? []).flatMap((b) => withTtl(b, b.resolvedAt ?? b.createdAt, BLOCKER_RETENTION_SECONDS)),
+    blockers: (snap.blockers ?? []).flatMap((b) => withTtl(b, b.updatedAt, FEEDBACK_RETENTION_SECONDS)),
     perfSessions: (snap.perfSessions ?? []).flatMap((p) => withTtl(p, p.lastSeen, PERF_SESSION_RETENTION_SECONDS)),
     perfSamples: (snap.perfSamples ?? []).flatMap((p) => withTtl(p, p.receivedAt, PERF_SAMPLE_RETENTION_SECONDS)),
     events: snap.events.flatMap((e) =>
@@ -109,8 +109,8 @@ function cloud(): { database: Database; media: MediaStore | null } {
   return { database: client.database(process.env.COSMOS_DATABASE || 'agentmanager'), media };
 }
 
-/** Copies each blocker's screenshots and videos. */
-async function copyMedia(blockers: Blocker[], from: MediaStore, to: MediaStore) {
+/** Copies each feedback request's pictures, clips and sounds. */
+async function copyMedia(blockers: Feedback[], from: MediaStore, to: MediaStore) {
   let copied = 0;
   let missing = 0;
   for (const b of blockers) {
@@ -146,7 +146,7 @@ async function moveToCloud(storeFile: string, mediaDir: string) {
   if (plan.expired) console.log(`  left out ${plan.expired} item(s) past their retention`);
 
   if (media && existsSync(mediaDir)) {
-    await copyMedia(plan.docs.blockers as unknown as Blocker[], new FolderMediaStore(mediaDir), media);
+    await copyMedia(plan.docs.blockers as unknown as Feedback[], new FolderMediaStore(mediaDir), media);
   }
 }
 

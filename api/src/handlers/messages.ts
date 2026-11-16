@@ -18,6 +18,7 @@ import {
 } from '@agent-manager-delux/shared';
 import { requireKey, requireOwnerWrite } from '../auth';
 import { HttpError, ok, readJson, type Ctx, type Handler } from '../http';
+import { markViewed } from './feedback';
 
 const MAX_BODY = 32 * 1024;
 const REASON_LENGTH = 300;
@@ -77,7 +78,14 @@ export function whyNoMessages(agent: Agent, now: Date): string | null {
 }
 
 /** Queues a message for agentctl on the agent's PC to post into the session. Check whyNoMessages first. */
-export async function queueMessage(ctx: Ctx, agent: Agent, text: string, from: string, activity: string): Promise<AgentMessage> {
+export async function queueMessage(
+  ctx: Ctx,
+  agent: Agent,
+  text: string,
+  from: string,
+  activity: string,
+  feedbackId: string | null = null,
+): Promise<AgentMessage> {
   const now = ctx.now();
   const at = now.toISOString();
   const message: AgentMessage = {
@@ -92,6 +100,7 @@ export async function queueMessage(ctx: Ctx, agent: Agent, text: string, from: s
     status: 'pending',
     doneAt: null,
     reason: null,
+    ...(feedbackId ? { feedbackId } : {}),
   };
   await ctx.store.putMessage(message);
   await ctx.store.addEvents([messageEvent(agent.id, activity, at)]);
@@ -133,5 +142,7 @@ export const ackMessage: Handler = async (req, ctx) => {
   await ctx.store.putMessage(done);
   const activity = status === 'delivered' ? "Message posted to the session's inbox" : `Message not delivered: ${done.reason}`;
   await ctx.store.addEvents([messageEvent(message.agentId, activity, at)]);
+  // The answer to a feedback request is in the session now: the agent has seen it.
+  if (status === 'delivered' && message.feedbackId) await markViewed(ctx, message.feedbackId, at);
   return ok({ message: done });
 };

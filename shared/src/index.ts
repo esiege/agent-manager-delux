@@ -5,3 +5,4 @@ export * from './mask';
 export * from './work';
 export * from './pricing';
 export * from './perf';
+export * from './feedback';
