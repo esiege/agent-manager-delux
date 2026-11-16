@@ -651,7 +651,7 @@ export const CRASH_QUESTION_ID = 'doing';
 export async function askAboutCrash(ctx: Ctx, crash: CrashRecord, origin: string, machineName: string | null): Promise<Feedback> {
   const at = ctx.now().toISOString();
   const where = machineName ? `${machineName} (${crash.machine})` : crash.machine;
-  const crashUrl = `${origin}/crashes/crash?id=${encodeURIComponent(crash.id)}`;
+  const crashUrl = `${origin}/performance/crash?id=${encodeURIComponent(crash.id)}`;
   const lines = [
     `**${crash.reason}**`,
     '',

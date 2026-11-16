@@ -1,4 +1,4 @@
-// Crashes of the games we build, as records of their own (the Crashes tab, agentctl crashes).
+// Crashes of the games we build, as records of their own (Crashes on the Game tab, agentctl crashes).
 // They arrive three ways:
 //   - straight from Unreal's CrashReportClient, whose DataRouterUrl points at
 //     POST /api/v1/perf/crash/unreal/<game key> (unrealCrash.ts reads the upload);
@@ -34,7 +34,7 @@ const DEFAULT_DAYS = 30;
 const MAX_CRASHES = 1000;
 
 export function crashPage(origin: string, id: string): string {
-  return `${origin}/crashes/crash?id=${encodeURIComponent(id)}`;
+  return `${origin}/performance/crash?id=${encodeURIComponent(id)}`;
 }
 
 const text = (s: string | null | undefined) => (s ? scrub(s) : null);

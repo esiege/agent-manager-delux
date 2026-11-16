@@ -152,7 +152,7 @@ describe('crashes as JSON and from the next launch', () => {
     });
     expect(first.status).toBe(201);
     const { crashUrl } = first.body as CrashResponse;
-    expect(crashUrl).toMatch(/^https:\/\/manager\.test\/crashes\/crash\?id=/);
+    expect(crashUrl).toMatch(/^https:\/\/manager\.test\/performance\/crash\?id=/);
 
     await startSession({ crash: { reason: 'Assertion failed: Van != nullptr', callstack: 'AVan::Tick()', t: 300 } });
     const { crashes: list } = await crashes();
