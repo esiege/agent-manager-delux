@@ -4,7 +4,7 @@
 export const API_BASE = '/api/v1';
 
 /** Bump when Docs/instructions.md changes in a way agents must act on (I-05). */
-export const INSTRUCTIONS_VERSION = 5;
+export const INSTRUCTIONS_VERSION = 6;
 /** When the instructions and agentctl last changed. web/public/update.md shows the same date. */
 export const INSTRUCTIONS_UPDATED = '2026-11-16';
 

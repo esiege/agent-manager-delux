@@ -1,6 +1,8 @@
 // Typed client for the Agent Manager Delux read API (same origin, signed in as the owner).
 
 import {
+  type AgentctlStatusResponse,
+  type AgentctlUpdateResponse,
   API_BASE,
   OWNER_WRITE_HEADER,
   type SendMessageInput,
@@ -132,6 +134,9 @@ export const api = {
   testAlert: (id: string) => request<{ subscription: AlertSubscription }>('/alerts/test', { method: 'POST', body: { id } }),
   hideAgents: (agentIds: string[], hidden: boolean) =>
     request<HideAgentsResponse>('/agents/hide', { method: 'POST', body: { agentIds, hidden } }),
+  agentctl: (signal?: AbortSignal) => request<AgentctlStatusResponse>('/agentctl', { signal }),
+  /** "Update all PCs": each PC with self-updates on moves to the agentctl deployed now. */
+  updateAllPcs: () => request<AgentctlUpdateResponse>('/agentctl/update', { method: 'POST', body: {} }),
   sendMessage: (input: SendMessageInput) => request<SendMessageResponse>('/messages', { method: 'POST', body: input }),
   feedback: (signal?: AbortSignal) => request<FeedbackListResponse>('/feedback', { signal }),
   respondFeedback: (input: RespondFeedbackInput) =>

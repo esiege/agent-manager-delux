@@ -1,6 +1,6 @@
 # Agent Manager Delux: update to the latest
 
-Updated: **2026-11-16** · Instructions version: **5**
+Updated: **2026-11-16** · Instructions version: **6**
 
 You are an AI agent on a PC that already reports to Agent Manager Delux, and the person wants this PC on the latest version. This page tells you how. It takes a minute and changes nothing else on the PC. (Setting up a new PC? Use `$MANAGER_URL/instructions.md` instead.)
 
@@ -12,14 +12,19 @@ Run:
 node "$HOME/.agent-manager/agentctl.js" version
 ```
 
-- It prints `agentctl, instructions version 5 (2026-11-16)` or a later version or date: this PC is up to date. Only check step 5 below (the `CLAUDE.md` section), then tell the person "Already up to date" and stop.
+- It prints `agentctl, instructions version 6 (2026-11-16)` or a later version or date: this PC is up to date. Only check step 5 below (the `CLAUDE.md` section), then tell the person "Already up to date" and stop.
 - It prints an older version, a version without a date, or nothing (the file is missing): follow the steps below. If the file is missing, this PC was never set up: follow `$MANAGER_URL/instructions.md` instead.
 
 - **`$MANAGER_URL`** below means the address you fetched this page from, without `/update.md` (for example `https://agents.example.net`).
 - If a tool gave you a summary of this page, fetch the raw file (`curl -fsSL $MANAGER_URL/update.md`) so you have the exact commands.
 - **The machine key is a secret.** It is never on this page and the update doesn't need it on the command line: `install` reuses the saved one. Don't print it, log it or write it anywhere.
 
-## What's new in version 5
+## What's new in version 6
+
+- **Updates from the site**: after this update, the person can update every PC at once with **Update all PCs** on the Instructions tab, without sending each one this page. agentctl downloads the new version itself, checks its SHA-256 and that it runs, installs it and restarts its heartbeat. `agentctl install --no-auto-update` turns it off on a PC; `agentctl doctor` shows it.
+- **Game crashes and errors**: games can report crashes and logged errors (see `$MANAGER_URL/performance.md`), and `agentctl perf` shows each session's error count and status.
+
+## In version 5
 
 - **Feedback from email**: the person can subscribe to feedback emails and answer from them, so answers may now come "by email". Nothing changes for you.
 - **More in a feedback request**: captions on files (`--caption "<file>=<text>"`, or `{"file", "caption"}` in a form), a "didn't see it" answer on ratings, `--group <tag>` to group requests (a release), `--supersedes <id>` to replace an older request, and `--json` output for scripts.
@@ -61,7 +66,8 @@ node "$HOME/.agent-manager/agentctl.js" version
    node "$HOME/.agent-manager/agentctl.js" install
    ```
 4. Check:
-   - `node "$HOME/.agent-manager/agentctl.js" version` says `instructions version 5`.
+   - `node "$HOME/.agent-manager/agentctl.js" version` says `instructions version 6`.
+   - `node "$HOME/.agent-manager/agentctl.js" doctor` shows `Updates: on`.
    - `node "$HOME/.agent-manager/agentctl.js" doctor` shows `Hooks: installed` and `Connection: OK`.
 5. Update the `## Agent Manager Delux` section (older installs call it `## Agent Manager`) of the user's `~/.claude/CLAUDE.md` (and of the project's `CLAUDE.md`, if it has one) to the text below. Replace the old section rather than adding a second one; add it if there is none. Leave the rest of the file alone.
 
@@ -102,4 +108,4 @@ Then do step 5 yourself if you can, or show the person the new section to paste.
 
 ## Any other agent or service
 
-Nothing to install. Version 5 adds captions, groups, replacements and "n/a" ratings to feedback requests, and `POST /api/v1/feedback/ready`. Version 4 adds feedback requests: see "Feedback" under "Any other agent or service" in `$MANAGER_URL/instructions.md`. Version 3 adds two optional report fields: `workType` (the kind of work you're doing) and `usage` (the tokens you used, if you know them). Version 2 added `story`, `task`, `prompt`, `turn` (`start` and `end` of a request) and `result` (the report of finished work). See "Report" in `$MANAGER_URL/instructions.md` for what each one means, start sending the ones that fit, and send `"instructionsVersion": 5` with your reports.
+Nothing to install. Version 6 only changes agentctl. Version 5 adds captions, groups, replacements and "n/a" ratings to feedback requests, and `POST /api/v1/feedback/ready`. Version 4 adds feedback requests: see "Feedback" under "Any other agent or service" in `$MANAGER_URL/instructions.md`. Version 3 adds two optional report fields: `workType` (the kind of work you're doing) and `usage` (the tokens you used, if you know them). Version 2 added `story`, `task`, `prompt`, `turn` (`start` and `end` of a request) and `result` (the report of finished work). See "Report" in `$MANAGER_URL/instructions.md` for what each one means, start sending the ones that fit, and send `"instructionsVersion": 6` with your reports.

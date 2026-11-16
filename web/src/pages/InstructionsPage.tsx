@@ -8,6 +8,7 @@ import Markdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { CopyField, CopyIcon, CopyTextButton } from '../components/Copy';
 import { PageHeader } from '../components/PageHeader';
+import { UpdatePcs } from '../components/UpdatePcs';
 import { LoadError, TableSkeleton } from '../components/States';
 import { usePolling } from '../lib/usePolling';
 
@@ -104,10 +105,11 @@ interface SideItemProps {
   copyLabel: string;
   meta?: string;
   link: { href: string; label: string };
+  children?: ReactNode;
 }
 
 /** A less common sentence, kept small beside the main steps. */
-function SideItem({ title, description, sentence, copyLabel, meta, link }: SideItemProps) {
+function SideItem({ title, description, sentence, copyLabel, meta, link, children }: SideItemProps) {
   return (
     <div className="am-side-item">
       <Text size="sm" fw={600}>
@@ -133,6 +135,7 @@ function SideItem({ title, description, sentence, copyLabel, meta, link }: SideI
           {meta}
         </Text>
       )}
+      {children}
     </div>
   );
 }
@@ -193,12 +196,14 @@ export function InstructionsPage() {
         <aside className="am-side">
           <SideItem
             title="Need to update?"
-            description="Update a PC whose agents are marked “old version” by sending its agent the update sentence."
+            description="Press Update all PCs to update every PC at once, or send one PC's agent the update sentence. Agents on an old version are marked “old version”."
             sentence={updateSentence}
             copyLabel="Copy update sentence"
             meta={`Latest: version ${INSTRUCTIONS_VERSION}, ${INSTRUCTIONS_UPDATED}`}
             link={{ href: UPDATE_PATH, label: 'Open update page' }}
-          />
+          >
+            <UpdatePcs />
+          </SideItem>
           <SideItem
             title="Building a game?"
             description="Adds performance reporting to the game, so its frame rate, frame times and memory show up on the Game tab for every machine it runs on, and you can compare builds and GPUs. Most importantly, it lets your agent read the metrics!"

@@ -1,6 +1,6 @@
 # Agent Manager Delux: how to report in
 
-Instructions version: **5** · Updated: **2026-11-16**
+Instructions version: **6** · Updated: **2026-11-16**
 
 Already set up on this PC? Follow `$MANAGER_URL/update.md` instead: it checks whether you're on the latest and updates if not.
 
@@ -126,6 +126,16 @@ Then, in this order:
    - or ask a follow-up with `--follows <id>` if you have more questions.
 
 If they press **Dismiss**, they have no opinion: go ahead with your default, and close it the same way.
+
+### Updates from Agent Manager Delux
+
+Once this PC is set up, the person can update it from the site: **Update all PCs** on the Instructions tab. At its next heartbeat (about a minute, while a session is open), agentctl downloads the new `agentctl.js` from the same site, checks that its SHA-256 matches what the site says it deployed and that it runs, keeps the old one as `agentctl.js.bak`, installs the new one and restarts its heartbeat. Nothing for you to do. To turn this off on a PC:
+
+```bash
+node "$HOME/.agent-manager/agentctl.js" install --no-auto-update
+```
+
+(`--auto-update` turns it on again.) `agentctl doctor` shows whether it's on and how the last update went.
 
 ### Messages from Agent Manager Delux
 
