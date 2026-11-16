@@ -14,12 +14,13 @@ import {
   type PerfSessionsResponse,
   type PerfStats,
 } from '@agent-manager-delux/shared';
-import { Alert, Anchor, Badge, Button, Group, Paper, SegmentedControl, Select, SimpleGrid, Stack, Table, Text, Title, Tooltip } from '@mantine/core';
+import { Alert, Anchor, Badge, Button, Group, Paper, SegmentedControl, Select, SimpleGrid, Stack, Switch, Table, Text, Title, Tooltip } from '@mantine/core';
 import { IconInfoCircle, IconKey } from '@tabler/icons-react';
 import { createColumnHelper, getCoreRowModel, getSortedRowModel, useReactTable } from '@tanstack/react-table';
 import { useMemo, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { DataTable } from '../components/DataTable';
+import { machineLabel } from '../components/MachineName';
 import { PageHeader } from '../components/PageHeader';
 import { EmptyState, LoadError, TableSkeleton } from '../components/States';
 import { RelativeTime, UpdatedAgo } from '../components/Time';
@@ -134,10 +135,12 @@ function Tiles({ sessions, stats }: { sessions: Row[]; stats: PerfStats }) {
 
 const TOP_GROUPS = 12;
 
-function Compare({ rows, by, onBy }: { rows: GroupRow[]; by: GroupBy; onBy: (by: GroupBy) => void }) {
+function Compare({ rows, by, onBy, names }: { rows: GroupRow[]; by: GroupBy; onBy: (by: GroupBy) => void; names: Record<string, string> | undefined }) {
+  // Machines show their nicknames.
+  const label = (name: string) => (by === 'machine' ? machineLabel(name, names) : name);
   const charted = rows.filter((r) => r.stats.avgFps !== null).slice(0, TOP_GROUPS);
   const data = charted.map((r) => ({
-    name: r.name,
+    name: label(r.name),
     fps: Number((r.stats.avgFps ?? 0).toFixed(1)),
   }));
   return (
@@ -190,7 +193,7 @@ function Compare({ rows, by, onBy }: { rows: GroupRow[]; by: GroupBy; onBy: (by:
           <Table.Tbody style={NUMERIC}>
             {rows.map((r) => (
               <Table.Tr key={r.name}>
-                <Table.Td>{r.name}</Table.Td>
+                <Table.Td>{label(r.name)}</Table.Td>
                 <Table.Td ta="right">{r.sessions}</Table.Td>
                 {by !== 'machine' && <Table.Td ta="right">{r.machines}</Table.Td>}
                 <Table.Td ta="right" c={r.crashes ? 'red' : undefined}>
@@ -216,6 +219,8 @@ function Compare({ rows, by, onBy }: { rows: GroupRow[]; by: GroupBy; onBy: (by:
 interface Row extends PerfSession {
   stats: PerfStats;
   status: PerfSessionStatus;
+  /** The machine's nickname, or its name. */
+  machineName: string;
 }
 
 const col = createColumnHelper<Row>();
@@ -245,7 +250,7 @@ const columns = [
     sortingFn: 'text',
     cell: ({ getValue }) => getValue() || '–',
   }),
-  col.accessor('machine', { header: 'Machine', sortingFn: 'text' }),
+  col.accessor('machineName', { header: 'Machine', sortingFn: 'text' }),
   col.accessor((r) => r.gpu ?? '', {
     id: 'gpu',
     header: 'GPU',
@@ -355,7 +360,8 @@ export function PerformancePage() {
   const machine = params.get('machine');
   const build = params.get('build');
 
-  const { data, error, updatedAt, refresh } = usePolling<PerfSessionsResponse>(`perf:${days}`, (signal) => api.perfSessions(days, signal), {
+  const tests = params.get('tests') === '1';
+  const { data, error, updatedAt, refresh } = usePolling<PerfSessionsResponse>(`perf:${days}:${tests}`, (signal) => api.perfSessions(days, signal, tests), {
     intervalMs: 30_000,
   });
 
@@ -367,6 +373,7 @@ export function PerformancePage() {
       ...s,
       stats: perfStats(s.totals),
       status: perfSessionStatus(s, nowMs),
+      machineName: machineLabel(s.machine, data.machineNames),
     }));
     // Each filter lists what the other two leave, so a choice never leads to nothing.
     return {
@@ -383,7 +390,10 @@ export function PerformancePage() {
     <Select
       aria-label={label}
       placeholder={`All ${label.toLowerCase()}s`}
-      data={value && !options.includes(value) ? [value, ...options] : options}
+      data={(value && !options.includes(value) ? [value, ...options] : options).map((o) => ({
+        value: o,
+        label: key === 'machine' ? machineLabel(o, data?.machineNames) : o,
+      }))}
       value={value}
       onChange={(v) => update({ [key]: v })}
       clearable
@@ -402,6 +412,7 @@ export function PerformancePage() {
         {filter('Game', 'game', view?.games ?? [], game)}
         {filter('Machine', 'machine', view?.machines ?? [], machine)}
         {filter('Build', 'build', view?.builds ?? [], build)}
+        <Switch label="Show test runs" checked={tests} onChange={(e) => update({ tests: e.currentTarget.checked ? '1' : null })} />
         <SegmentedControl aria-label="Time window" data={WINDOWS} value={String(days)} onChange={(value) => update({ days: value === '30' ? null : value })} />
       </PageHeader>
       {!data || !view ? (
@@ -426,7 +437,7 @@ export function PerformancePage() {
           )}
           <div>
             <Tiles sessions={view.rows} stats={view.total} />
-            <Compare rows={view.groups} by={by} onBy={(v) => update({ by: v === 'machine' ? null : v })} />
+            <Compare rows={view.groups} by={by} names={data.machineNames} onBy={(v) => update({ by: v === 'machine' ? null : v })} />
           </div>
           <Sessions rows={view.rows} />
         </Stack>

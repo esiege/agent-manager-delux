@@ -6,9 +6,10 @@ import { LineChart, type LineChartSeries } from '@mantine/charts';
 import { LIMITS, PERF_SAMPLE_DAYS, perfSessionStatus, perfStats, type PerfSessionDetailResponse } from '@agent-manager-delux/shared';
 import { Alert, Anchor, Badge, Code, Group, SimpleGrid, Stack, Table, Text } from '@mantine/core';
 import { IconAlertTriangle, IconInfoCircle } from '@tabler/icons-react';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { JsonBlock } from '../components/JsonBlock';
+import { MachineName, machineLabel } from '../components/MachineName';
 import { PageHeader } from '../components/PageHeader';
 import { EmptyState, LoadError, TableSkeleton } from '../components/States';
 import { RelativeTime, UpdatedAgo } from '../components/Time';
@@ -81,6 +82,8 @@ const plain = (v: number) => (Math.abs(v) >= 1000 ? Math.round(v).toLocaleString
 export function PerfSessionPage() {
   const [params] = useSearchParams();
   const id = params.get('id') ?? '';
+  // Set after the owner renames the machine here, until the next refresh brings it.
+  const [renamed, setNames] = useState<Record<string, string> | undefined>(undefined);
   const { data, error, updatedAt, refresh } = usePolling<PerfSessionDetailResponse>(`perf-session:${id}`, (signal) => api.perfSession(id, signal), {
     intervalMs: 15_000,
     quietStatuses: [400, 404],
@@ -109,6 +112,7 @@ export function PerfSessionPage() {
   const { session, samples } = data;
   const stats = perfStats(session.totals);
   const status = perfSessionStatus(session, Date.parse(data.now));
+  const names = renamed ?? data.machineNames;
   const errors = session.errors ?? [];
   const crash = session.crash;
   const hardware = hardwareLine(session);
@@ -128,7 +132,7 @@ export function PerfSessionPage() {
 
   return (
     <>
-      <PageHeader title={`${session.game}${session.build ? ` ${session.build}` : ''} on ${session.machine}`}>
+      <PageHeader title={`${session.game}${session.build ? ` ${session.build}` : ''} on ${machineLabel(session.machine, names)}`}>
         <UpdatedAgo updatedAt={updatedAt} error={error} />
         <Anchor component={Link} to="/performance" size="sm">
           All sessions
@@ -138,7 +142,7 @@ export function PerfSessionPage() {
       <Group gap="xs" mb="md" wrap="wrap">
         <PerfStatusBadge status={status} size="md" />
         <Text size="sm" c="dimmed">
-          Started {formatAbsolute(session.startedAt)} · last heard from <RelativeTime iso={session.lastSeen} c="dimmed" /> · key {session.keyName}
+          <MachineName machine={session.machine} names={names} editable onRenamed={setNames} size="sm" /> · {session.kind === 'test' ? 'test run · ' : ''}Started {formatAbsolute(session.startedAt)} · last heard from <RelativeTime iso={session.lastSeen} c="dimmed" /> · key {session.keyName}
         </Text>
         {hardware && (
           <Text size="sm" w="100%">
@@ -167,9 +171,16 @@ export function PerfSessionPage() {
               {crash.callstack}
             </Code>
           )}
-          <Text size="xs" c="dimmed" mt="xs">
-            Reported {formatAbsolute(crash.reportedAt)}
-          </Text>
+          <Group gap="sm" mt="xs">
+            <Text size="xs" c="dimmed">
+              Reported {formatAbsolute(crash.reportedAt)}
+            </Text>
+            {crash.crashId && (
+              <Anchor component={Link} to={`/crashes/crash?id=${encodeURIComponent(crash.crashId)}`} size="xs">
+                Open the crash: breadcrumbs, log and what you were doing
+              </Anchor>
+            )}
+          </Group>
         </Alert>
       )}
       {status === 'lost' && (

@@ -16,6 +16,8 @@ import { SettingsPage } from './pages/SettingsPage';
 const ReportingPage = lazy(() => import('./pages/ReportingPage').then((m) => ({ default: m.ReportingPage })));
 const PerformancePage = lazy(() => import('./pages/PerformancePage').then((m) => ({ default: m.PerformancePage })));
 const PerfSessionPage = lazy(() => import('./pages/PerfSessionPage').then((m) => ({ default: m.PerfSessionPage })));
+const CrashesPage = lazy(() => import('./pages/CrashesPage').then((m) => ({ default: m.CrashesPage })));
+const CrashPage = lazy(() => import('./pages/CrashesPage').then((m) => ({ default: m.CrashPage })));
 const FeedbackPage = lazy(() => import('./pages/FeedbackPage').then((m) => ({ default: m.FeedbackPage })));
 const ReleasesPage = lazy(() => import('./pages/ReleasesPage').then((m) => ({ default: m.ReleasesPage })));
 const InstructionsPage = lazy(() => import('./pages/InstructionsPage').then((m) => ({ default: m.InstructionsPage })));
@@ -71,6 +73,22 @@ export function App() {
             element={
               <Suspense fallback={<TableSkeleton rows={10} />}>
                 <PerfSessionPage />
+              </Suspense>
+            }
+          />
+          <Route
+            path="crashes"
+            element={
+              <Suspense fallback={<TableSkeleton rows={10} />}>
+                <CrashesPage />
+              </Suspense>
+            }
+          />
+          <Route
+            path="crashes/crash"
+            element={
+              <Suspense fallback={<TableSkeleton rows={10} />}>
+                <CrashPage />
               </Suspense>
             }
           />

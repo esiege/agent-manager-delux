@@ -2,6 +2,9 @@
 
 import {
   type AgentctlStatusResponse,
+  type CrashDetailResponse,
+  type CrashesResponse,
+  type MachineNamesResponse,
   type AgentctlUpdateResponse,
   API_BASE,
   OWNER_WRITE_HEADER,
@@ -122,7 +125,12 @@ export const api = {
   agent: (id: string, signal?: AbortSignal) =>
     request<AgentDetailResponse>(`/agent?${new URLSearchParams({ id }).toString()}`, { signal }),
   reporting: (days: number, signal?: AbortSignal) => request<ReportingResponse>(`/reporting?days=${days}`, { signal }),
-  perfSessions: (days: number, signal?: AbortSignal) => request<PerfSessionsResponse>(`/perf/sessions?days=${days}`, { signal }),
+  perfSessions: (days: number, signal?: AbortSignal, tests = false) =>
+    request<PerfSessionsResponse>(`/perf/sessions?days=${days}${tests ? '&tests=1' : ''}`, { signal }),
+  crashes: (days: number, signal?: AbortSignal, tests = false) => request<CrashesResponse>(`/perf/crashes?days=${days}${tests ? '&tests=1' : ''}`, { signal }),
+  crash: (id: string, signal?: AbortSignal) => request<CrashDetailResponse>(`/perf/crash?${new URLSearchParams({ id }).toString()}`, { signal }),
+  /** Names a machine ("gaming rig"); an empty name clears it. */
+  setMachineName: (machine: string, name: string) => request<MachineNamesResponse>('/machine-names', { method: 'POST', body: { machine, name } }),
   perfSession: (id: string, signal?: AbortSignal) =>
     request<PerfSessionDetailResponse>(`/perf/session?${new URLSearchParams({ id }).toString()}`, { signal }),
   keys: (signal?: AbortSignal) => request<KeysResponse>('/keys', { signal }),
