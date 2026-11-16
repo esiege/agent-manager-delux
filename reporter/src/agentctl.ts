@@ -21,6 +21,8 @@ import {
   type FeedbackMedia,
   type PerfSessionDetailResponse,
   type PerfSessionsResponse,
+  type ReleaseCreateResponse,
+  type ReleasesResponse,
   type ReportInput,
   type ReportResponse,
   type ReportedState,
@@ -36,6 +38,7 @@ import {
   type FeedbackFile,
   type QuestionFlag,
 } from './feedback';
+import { releaseLinkArg } from './release';
 import { ConfigError, defaultMachineName, loadConfig, type Config } from './config';
 import { ensureDaemon, runDaemon } from './daemon';
 import { fileSha256, lastAttempt } from './selfupdate';
@@ -114,6 +117,16 @@ const HELP = `agentctl: reports the Claude Code sessions on this PC to Agent Man
       Tells the person what you're doing with their answer. Close it with a note in their words.
   agentctl feedback list [--group <tag>] [--json]
       Your requests that aren't closed yet, and where each one is (--json: with answered/viewed).
+  agentctl release "<version>" --url <link> [--title "<name>"] [--notes "<Markdown>"]
+                  [--notes-file <file>] [--comment "<text>"] [--link "<label>=<url>"]...
+                  [--game <name>] [--json]
+      Announces a release on the Releases tab: its version, where it is (--url: the GitHub
+      release, store page or download), its change notes (Markdown; "-" reads them from stdin)
+      and your comments (what to try first, what's known to be rough). --link adds more links,
+      such as downloads. --game defaults to this session's project. Sending the same game and
+      version again updates that release.
+  agentctl release list [--game <name>] [--limit <n>] [--json]
+      Lists releases sent so far, newest first.
   agentctl blocker ...        The old name for feedback ask (--details, --screenshot still work).
   agentctl perf [--game <name>] [--days <n>] [--limit <n>] [--json]
       Lists the performance sessions games have sent, newest first, one line a session.
@@ -133,7 +146,7 @@ class NotFoundError extends Error {}
 const SWITCHES = new Set(['clear', 'uncommitted', 'allow-messages', 'no-messages', 'json', 'screen']);
 
 /** Flags that can be given more than once; every value is kept in `lists`. */
-const REPEATED = new Set(['check', 'screenshot', 'image', 'video', 'audio', 'question', 'choice', 'multi', 'rating', 'caption']);
+const REPEATED = new Set(['check', 'screenshot', 'image', 'video', 'audio', 'question', 'choice', 'multi', 'rating', 'caption', 'link']);
 
 interface ParsedArgs {
   positional: string[];
@@ -626,6 +639,69 @@ async function blockerCommand(args: ParsedArgs) {
   return askFeedback(args, true);
 }
 
+// ---- releases ----
+
+async function releaseCommand(args: ParsedArgs) {
+  const { positional, flags, lists } = args;
+  if (positional[0] === 'list') return releaseListCommand(flags);
+  const usage = 'Usage: agentctl release "<version>" --url <link> [--title "<name>"] [--notes "<Markdown>"] [--comment "<text>"] (see agentctl help)';
+  const version = positional.join(' ').trim();
+  if (!version || !flags.url) throw new UsageError(usage);
+  let notes: string | null = flags.notes?.trim() ?? null;
+  if (notes === '-') notes = (await readStdin()).trim();
+  if (flags['notes-file']) {
+    if (notes) throw new UsageError('Give the change notes with --notes or --notes-file, not both');
+    const path = resolve(flags['notes-file']);
+    if (!existsSync(path)) throw new UsageError(`No file at ${path}`);
+    notes = readFileSync(path, 'utf8').trim();
+  }
+  let links: ReturnType<typeof releaseLinkArg>[];
+  try {
+    links = (lists.link ?? []).map(releaseLinkArg);
+  } catch (e) {
+    throw new UsageError((e as Error).message);
+  }
+
+  const s = findCallingSession();
+  const config = loadConfig();
+  const res = await post<ReleaseCreateResponse>(config, '/releases', {
+    agentId: s.agentId,
+    version,
+    url: flags.url,
+    title: flags.title?.trim() || null,
+    notes: notes || null,
+    comment: flags.comment?.trim() || null,
+    links,
+    project: flags.game?.trim() || null,
+  });
+  if ('json' in flags) {
+    console.log(JSON.stringify({ id: res.stored.id, url: res.releaseUrl, updated: res.updated }));
+    return;
+  }
+  const name = `${res.stored.project ?? s.name} ${res.stored.version}`;
+  console.log(`${res.updated ? 'Updated' : 'Announced'} ${name}: ${res.releaseUrl}`);
+  for (const w of res.warnings) console.log(`Note: ${w}`);
+}
+
+async function releaseListCommand(flags: Record<string, string>) {
+  const params = new URLSearchParams({ limit: flags.limit ?? '20' });
+  if (flags.game) params.set('game', flags.game);
+  const { releases, truncated } = await get<ReleasesResponse>(loadConfig(), `/releases?${params}`);
+  if ('json' in flags) {
+    console.log(JSON.stringify(releases, null, 2));
+    return;
+  }
+  if (releases.length === 0) {
+    console.log(`No releases yet${flags.game ? ` for ${flags.game}` : ''}.`);
+    return;
+  }
+  for (const r of releases) {
+    const title = r.title ? ` "${r.title}"` : '';
+    console.log(`${r.createdAt.slice(0, 10)}  ${r.project ?? r.agentName} ${r.version}${title}  ${r.url}`);
+  }
+  if (truncated) console.log('(more releases exist; raise --limit or narrow with --game)');
+}
+
 // ---- install / uninstall ----
 
 function readSettings(): Record<string, unknown> {
@@ -880,6 +956,9 @@ async function main(argv: string[]): Promise<number> {
         return 0;
       case 'blocker':
         await blockerCommand(args);
+        return 0;
+      case 'release':
+        await releaseCommand(args);
         return 0;
       case 'perf':
         await perfCommand(positional, flags);
