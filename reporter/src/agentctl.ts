@@ -9,8 +9,6 @@ import {
   INSTRUCTIONS_VERSION,
   REPORTED_STATES,
   WORK_TYPES,
-  perfSessionStatus,
-  perfStats,
   AGENTCTL_COMMAND,
   FEEDBACK_AGENT_STATUSES,
   FEEDBACK_STATUS_LABEL,
@@ -19,8 +17,6 @@ import {
   type FeedbackDetailResponse,
   type FeedbackInboxResponse,
   type FeedbackMedia,
-  type PerfSessionDetailResponse,
-  type PerfSessionsResponse,
   type ReleaseCreateResponse,
   type ReleasesResponse,
   type ReportInput,
@@ -49,6 +45,7 @@ import { removeAllInboxes, syncInbox } from './inbox';
 import { paths } from './paths';
 import { ancestors, isAlive } from './proc';
 import { get, getFile, post, postFile, SendError } from './send';
+import { crashesCommand, perfCommand, PerfUsageError } from './perfcmd';
 import {
   addSubagent,
   listSessions,
@@ -128,9 +125,15 @@ const HELP = `agentctl: reports the Claude Code sessions on this PC to Agent Man
   agentctl release list [--game <name>] [--limit <n>] [--json]
       Lists releases sent so far, newest first.
   agentctl blocker ...        The old name for feedback ask (--details, --screenshot still work).
-  agentctl perf [--game <name>] [--days <n>] [--limit <n>] [--json]
+  agentctl perf [--game <name>] [--machine <name or nickname>] [--scene <scene>]
+               [--status running|ended|crashed|lost] [--tests] [--days <n>] [--limit <n>] [--json]
       Lists the performance sessions games have sent, newest first, one line a session.
-  agentctl perf <sessionId>   Prints one session as JSON: its totals, worst hitches and samples.
+      Test runs are hidden unless --tests.
+  agentctl perf <sessionId>   Prints one session as JSON: its totals, worst hitches, errors and samples.
+  agentctl crashes [--game <name>] [--machine <name or nickname>] [--tests] [--days <n>] [--limit <n>] [--json]
+      Lists the crashes games have reported, newest first.
+  agentctl crashes <id> [--json]
+      Shows one crash: reason, breadcrumbs, callstack, end of the log, and what the person was doing.
   agentctl test               Sends a test report and prints the answer.
   agentctl doctor             Shows the config, hooks, heartbeat, sessions and recent errors.
   agentctl hook               (used by the hooks) Reads one hook event from stdin.
@@ -810,50 +813,6 @@ function uninstallCommand() {
 
 // ---- perf ----
 
-async function perfCommand(positional: string[], flags: Record<string, string>) {
-  const config = loadConfig();
-  if (positional[0]) {
-    const detail = await get<PerfSessionDetailResponse>(config, `/perf/session?${new URLSearchParams({ id: positional[0] })}`);
-    console.log(JSON.stringify(detail, null, 2));
-    return;
-  }
-  const params = new URLSearchParams({ days: flags.days ?? '30', limit: flags.limit ?? '50' });
-  if (flags.game) params.set('game', flags.game);
-  const list = await get<PerfSessionsResponse>(config, `/perf/sessions?${params}`);
-  if (flags.json) {
-    console.log(JSON.stringify(list, null, 2));
-    return;
-  }
-  if (list.sessions.length === 0) {
-    console.log(`No performance sessions in the last ${list.days} days${flags.game ? ` for ${flags.game}` : ''}.`);
-    return;
-  }
-  const num = (v: number | null, unit: string, digits = 0) => (v === null ? '-' : `${v.toFixed(digits)}${unit}`);
-  const rows = list.sessions.map((s) => {
-    const stats = perfStats(s.totals);
-    return [
-      s.id,
-      `${s.startedAt.slice(0, 16)}Z`,
-      s.game,
-      s.build ?? '-',
-      s.machine,
-      s.gpu ?? '-',
-      s.resolution ?? '-',
-      num(stats.seconds, 's'),
-      num(stats.avgFps, ' fps'),
-      `p99 ${num(stats.frameMsP99, ' ms', 1)}`,
-      `worst ${num(stats.frameMsMax, ' ms', 1)}`,
-      `${stats.hitches} hitches`,
-      stats.bound ? `${stats.bound}-bound` : '-',
-      `${stats.errors + stats.ensures} errors`,
-      perfSessionStatus(s, Date.parse(list.now)),
-    ];
-  });
-  const widths = rows[0]!.map((_, i) => Math.max(...rows.map((r) => r[i]!.length)));
-  for (const r of rows) console.log(r.map((cell, i) => cell.padEnd(widths[i]!)).join('  ').trimEnd());
-  if (list.truncated) console.log(`(more sessions exist; raise --limit or narrow with --game)`);
-}
-
 // ---- test / doctor ----
 
 async function testCommand() {
@@ -963,6 +922,9 @@ async function main(argv: string[]): Promise<number> {
       case 'perf':
         await perfCommand(positional, flags);
         return 0;
+      case 'crashes':
+        await crashesCommand(positional, flags);
+        return 0;
       case 'test':
         await testCommand();
         return 0;
@@ -991,6 +953,7 @@ async function main(argv: string[]): Promise<number> {
     if (e instanceof StillOpenError) return 6;
     if (e instanceof NotAttachedError) return 7;
     if (e instanceof FeedbackFileError) return 1;
+    if (e instanceof PerfUsageError) return 1;
     return 1;
   }
 }
