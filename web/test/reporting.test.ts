@@ -1,6 +1,6 @@
 import type { ReportingAgent, ReportingResponse } from '@agent-manager-delux/shared';
 import { describe, expect, it } from 'vitest';
-import { allowancePerDay, convertPeriod, planTokens } from '../src/lib/plans';
+import { allowancePerDay, calibrate } from '../src/lib/plans';
 import { buildReport, formatCost, formatHours } from '../src/lib/reporting';
 
 const agent = (id: string, extra: Partial<ReportingAgent> = {}): ReportingAgent => ({
@@ -77,11 +77,11 @@ describe('formatting', () => {
 });
 
 describe('plans', () => {
-  it('fills in a plan per week or month, and spreads it over a window', () => {
-    expect(planTokens('pro', 'week')).toBe(50);
-    expect(planTokens('pro', 'month')).toBe(210);
-    expect(planTokens('custom', 'week')).toBeNull();
-    expect(convertPeriod(210, 'month', 'week')).toBe(49);
-    expect(allowancePerDay({ plan: 'pro', tokens: 70, period: 'week' })).toBe(10_000_000);
+  it("works out the weekly allowance from the % Claude shows, and spreads it over days", () => {
+    expect(calibrate(120, 40)).toBe(300);
+    expect(calibrate(0, 40)).toBeNull();
+    expect(calibrate(120, 0)).toBeNull();
+    expect(allowancePerDay({ weekly: 70 })).toBe(10);
+    expect(allowancePerDay({ weekly: 0 })).toBe(0);
   });
 });

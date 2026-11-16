@@ -100,7 +100,7 @@ The answer's `stored` says how many samples were new (`count`) and how many it a
 
 ### What happens to a crash
 
-Each crash is a record of its own on the **Crashes** tab: the reason, the callstack, the end of the log, and **breadcrumbs** (what the game was doing just before). A crash with a `sessionId` marks that session **Crashed**. A new crash that isn't a test run also puts an item on the person's **Feedback** tab asking what they were doing, and their answer shows with the crash. One session has at most one crash: if it's reported twice (the crash reporter, then the next launch), the second fills in what the first lacked.
+Each crash is a record of its own, under **Crashes** on the **Game** tab: the reason, the callstack, the end of the log, and **breadcrumbs** (what the game was doing just before). A crash with a `sessionId` marks that session **Crashed**. A new crash that isn't a test run also puts an item on the person's **Feedback** tab asking what they were doing, and their answer shows with the crash. One session has at most one crash: if it's reported twice (the crash reporter, then the next launch), the second fills in what the first lacked.
 
 ### Crashes from Unreal's crash reporter (do this first)
 

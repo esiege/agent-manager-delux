@@ -176,7 +176,7 @@ export function PerfSessionPage() {
               Reported {formatAbsolute(crash.reportedAt)}
             </Text>
             {crash.crashId && (
-              <Anchor component={Link} to={`/crashes/crash?id=${encodeURIComponent(crash.crashId)}`} size="xs">
+              <Anchor component={Link} to={`/performance/crash?id=${encodeURIComponent(crash.crashId)}`} size="xs">
                 Open the crash: breadcrumbs, log and what you were doing
               </Anchor>
             )}

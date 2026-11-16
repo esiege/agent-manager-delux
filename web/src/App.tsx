@@ -23,6 +23,12 @@ const ReleasesPage = lazy(() => import('./pages/ReleasesPage').then((m) => ({ de
 const InstructionsPage = lazy(() => import('./pages/InstructionsPage').then((m) => ({ default: m.InstructionsPage })));
 
 /** The Feedback tab was Blockers: old alert links (/blockers?id=…) land on the same request. */
+/** Crashes moved under the Game tab: /crashes and /crashes/crash?id=… land in the same place. */
+function CrashesRedirect() {
+  const { pathname, search } = useLocation();
+  return <Navigate to={`${pathname.endsWith('/crash') ? '/performance/crash' : '/performance/crashes'}${search}`} replace />;
+}
+
 function BlockersRedirect() {
   const { search } = useLocation();
   return <Navigate to={`/feedback${search}`} replace />;
@@ -77,7 +83,7 @@ export function App() {
             }
           />
           <Route
-            path="crashes"
+            path="performance/crashes"
             element={
               <Suspense fallback={<TableSkeleton rows={10} />}>
                 <CrashesPage />
@@ -85,13 +91,16 @@ export function App() {
             }
           />
           <Route
-            path="crashes/crash"
+            path="performance/crash"
             element={
               <Suspense fallback={<TableSkeleton rows={10} />}>
                 <CrashPage />
               </Suspense>
             }
           />
+          {/* Crashes had a tab of their own; links in Feedback items sent then still work. */}
+          <Route path="crashes" element={<CrashesRedirect />} />
+          <Route path="crashes/crash" element={<CrashesRedirect />} />
           <Route path="agents" element={<AgentsPage />} />
           <Route path="agents/detail" element={<AgentDetailPage />} />
           <Route

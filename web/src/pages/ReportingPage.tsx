@@ -15,6 +15,7 @@ import {
   Alert,
   Anchor,
   Badge,
+  Button,
   Group,
   NumberInput,
   Paper,
@@ -29,13 +30,13 @@ import {
 } from '@mantine/core';
 import { IconInfoCircle } from '@tabler/icons-react';
 import { useLocalStorage } from '@mantine/hooks';
-import { useMemo, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import { PageHeader } from '../components/PageHeader';
 import { EmptyState, LoadError, TableSkeleton } from '../components/States';
 import { UpdatedAgo } from '../components/Time';
 import { api } from '../lib/api';
-import { allowancePerDay, convertPeriod, CUSTOM_PLAN, DEFAULT_PLAN, PLANS, planTokens, type PlanPeriod, type PlanSettings } from '../lib/plans';
+import { allowancePerDay, calibrate, DEFAULT_PLAN, type PlanSettings } from '../lib/plans';
 import { buildReport, formatCost, formatCount, formatHours, type GroupHours, type Report, type TypeRow } from '../lib/reporting';
 import { useUrlState } from '../lib/urlState';
 import { usePolling } from '../lib/usePolling';
@@ -47,14 +48,16 @@ const WINDOWS = [
   { value: '365', label: '1 year' },
 ];
 
-/** Plan view: tokens against what the plan allows, instead of dollars at API prices. */
+/** Plan view: usage as a share of the plan's limit, measured in API-equivalent dollars (lib/plans). */
 interface PlanView {
-  /** Tokens the plan allows over the whole window. */
+  /** API-equivalent dollars the plan allows over the whole window; 0 until calibrated. */
   allowance: number;
-  /** Tokens the plan allows per bar of the per-day (or per-week) chart. */
+  /** Dollars the plan allows per bar of the per-day (or per-week) chart. */
   perBucket: number;
   days: number;
 }
+
+const ofPlan = (cost: number, plan: PlanView) => (plan.allowance ? `${Math.round((cost / plan.allowance) * 100)}%` : '–');
 
 /** Colors by the job they do: the group a kind of work belongs to (styles.css, light and dark). */
 const GROUP_COLOR: Record<WorkGroup, string> = {
@@ -159,8 +162,12 @@ function Tiles({ report, plan }: { report: Report; plan: PlanView | null }) {
       {plan ? (
         <Stat
           label="Plan usage"
-          value={plan.allowance ? `${Math.round((t.tokens / plan.allowance) * 100)}%` : '–'}
-          note={`${formatCount(t.tokens)} of ${formatCount(plan.allowance)} tokens in ${plan.days} days`}
+          value={ofPlan(t.cost, plan)}
+          note={
+            plan.allowance
+              ? `${formatCost(t.cost)} of ${formatCost(plan.allowance)} API-equivalent in ${plan.days} days`
+              : 'set the weekly % Claude shows, above'
+          }
         />
       ) : (
         <Stat
@@ -269,8 +276,12 @@ function TimeOverTime({ report, plan }: { report: Report; plan: PlanView | null 
         />
       </Section>
       <Section
-        title={`${plan ? 'Tokens' : 'API cost'} per ${report.bucket}`}
-        description={plan ? `Tokens when they were reported, against what the plan allows per ${report.bucket}.` : 'Tokens at API list prices, when they were reported.'}
+        title={`${plan ? 'Plan usage' : 'API cost'} per ${report.bucket}`}
+        description={
+          plan
+            ? `Tokens at API list prices, against what the plan allows per ${report.bucket}.`
+            : 'Tokens at API list prices, when they were reported.'
+        }
       >
         {report.noUsage ? (
           <NoUsageYet />
@@ -279,10 +290,10 @@ function TimeOverTime({ report, plan }: { report: Report; plan: PlanView | null 
             h={240}
             data={data}
             dataKey="day"
-            series={[{ name: 'tokens', label: 'Tokens', color: 'var(--am-series-technical)' }]}
-            valueFormatter={formatCount}
+            series={[{ name: 'cost', label: 'API-equivalent', color: 'var(--am-series-technical)' }]}
+            valueFormatter={formatCost}
             gridAxis="y"
-            referenceLines={plan.perBucket > 0 ? [{ y: plan.perBucket, label: `Plan: ${formatCount(plan.perBucket)}`, color: 'red.6' }] : undefined}
+            referenceLines={plan.perBucket > 0 ? [{ y: plan.perBucket, label: `Plan: ${formatCost(plan.perBucket)}`, color: 'red.6' }] : undefined}
             yAxisProps={{ domain: [0, (max: number) => Math.max(max, plan.perBucket)] }}
             {...BAR_LOOK}
             barProps={{ radius: [4, 4, 0, 0] }}
@@ -431,7 +442,7 @@ function Breakdown({ report, plan }: { report: Report; plan: PlanView | null }) 
                 <Table.Td ta="right">{r.ended ? `${Math.round((r.finished / r.ended) * 100)}%` : '–'}</Table.Td>
                 <Table.Td ta="right">{r.results}</Table.Td>
                 <Table.Td ta="right">{r.tokens ? formatCount(r.tokens) : '–'}</Table.Td>
-                <Table.Td ta="right">{!r.tokens ? '–' : !plan ? formatCost(r.cost) : plan.allowance ? `${Math.round((r.tokens / plan.allowance) * 100)}%` : '–'}</Table.Td>
+                <Table.Td ta="right">{!r.tokens ? '–' : !plan ? formatCost(r.cost) : ofPlan(r.cost, plan)}</Table.Td>
               </Table.Tr>
             ))}
           </Table.Tbody>
@@ -531,59 +542,45 @@ function Notes({ report, plan }: { report: Report; plan: PlanView | null }) {
   );
 }
 
-/** The Plan view's settings: pick a plan to fill in its tokens, or type a number of your own. */
-function PlanControls({ settings, onChange }: { settings: PlanSettings; onChange: (next: PlanSettings) => void }) {
+/**
+ * The Plan view's settings. Anthropic doesn't publish what a plan allows, so the owner types the
+ * weekly percentage Claude shows and the page works out 100% from the last 7 days.
+ */
+function PlanControls({ settings, costLast7Days, onChange }: { settings: PlanSettings; costLast7Days: number; onChange: (next: PlanSettings) => void }) {
+  const [percent, setPercent] = useState<number | string>('');
+  const weekly = calibrate(costLast7Days, Number(percent));
   return (
     <Group gap="xs" mb="md" align="center" wrap="wrap">
-      <Select
-        aria-label="Claude plan"
-        size="xs"
-        w={150}
-        data={[...PLANS.map((p) => ({ value: p.id, label: p.label })), { value: CUSTOM_PLAN, label: 'Custom' }]}
-        value={settings.plan}
-        allowDeselect={false}
-        onChange={(plan) => plan && onChange({ ...settings, plan, tokens: planTokens(plan, settings.period) ?? settings.tokens })}
-      />
       <Text size="xs" c="dimmed">
-        allows
+        Claude shows
       </Text>
       <NumberInput
-        aria-label={`Millions of tokens per ${settings.period}`}
+        aria-label="Weekly limit used, as Claude shows it"
         size="xs"
-        w={110}
+        w={80}
         min={0}
-        step={10}
-        suffix=" M"
-        thousandSeparator=","
+        max={100}
+        suffix="%"
         allowNegative={false}
-        value={settings.tokens}
-        onChange={(value) => {
-          const tokens = typeof value === 'number' ? value : 0;
-          if (tokens !== settings.tokens) onChange({ ...settings, tokens, plan: CUSTOM_PLAN });
-        }}
+        placeholder="%"
+        value={percent}
+        onChange={setPercent}
       />
       <Text size="xs" c="dimmed">
-        tokens per
+        of my weekly limit used
       </Text>
-      <SegmentedControl
-        aria-label="Plan period"
-        size="xs"
-        data={[
-          { value: 'week', label: 'Week' },
-          { value: 'month', label: 'Month' },
-        ]}
-        value={settings.period}
-        onChange={(value) => {
-          const period = value as PlanPeriod;
-          onChange({ ...settings, period, tokens: planTokens(settings.plan, period) ?? convertPeriod(settings.tokens, settings.period, period) });
-        }}
-      />
+      <Button size="xs" variant="light" disabled={weekly === null} onClick={() => weekly !== null && onChange({ weekly })}>
+        Set
+      </Button>
+      <Text size="xs" c="dimmed">
+        {settings.weekly > 0 ? `Plan allows about ${formatCost(settings.weekly)} a week at API prices.` : 'Not set yet.'}
+      </Text>
       <Tooltip
-        label="Anthropic doesn't publish token limits for its plans, so the numbers a plan fills in are rough estimates per seat, counting cache reads and writes. Type your own to replace them."
+        label="Plan limits follow compute, roughly API prices, not raw tokens: most tokens are cache reads, which cost a tenth of fresh input or less. Anthropic doesn't publish the limits, so read the weekly % from claude.ai Settings > Usage (or /usage in Claude Code) and this works out what 100% is from the last 7 days. Their week resets at a fixed time, so it's closest just before the reset."
         multiline
-        maw={320}
+        maw={340}
       >
-        <IconInfoCircle size={16} color="var(--mantine-color-dimmed)" aria-label="About these numbers" />
+        <IconInfoCircle size={16} color="var(--mantine-color-dimmed)" aria-label="About plan usage" />
       </Tooltip>
     </Group>
   );
@@ -602,7 +599,8 @@ export function ReportingPage() {
 
   // Plan or API is how this browser's owner pays, not a filter of the view: kept in the browser.
   const [billing, setBilling] = useLocalStorage<'api' | 'plan'>({ key: 'am-reporting-billing', defaultValue: 'api', getInitialValueInEffect: false });
-  const [settings, setSettings] = useLocalStorage<PlanSettings>({ key: 'am-reporting-plan', defaultValue: DEFAULT_PLAN, getInitialValueInEffect: false });
+  // v2: the allowance is API-equivalent dollars now, not tokens; the old token settings don't carry over.
+  const [settings, setSettings] = useLocalStorage<PlanSettings>({ key: 'am-reporting-plan-v2', defaultValue: DEFAULT_PLAN, getInitialValueInEffect: false });
   const plan: PlanView | null =
     billing === 'plan' && report
       ? { allowance: allowancePerDay(settings) * days, perBucket: allowancePerDay(settings) * (report.bucket === 'week' ? 7 : 1), days }
@@ -638,7 +636,7 @@ export function ReportingPage() {
           onChange={(value) => update({ days: value === '30' ? null : value })}
         />
       </PageHeader>
-      {billing === 'plan' && <PlanControls settings={settings} onChange={setSettings} />}
+      {billing === 'plan' && <PlanControls settings={settings} costLast7Days={report?.costLast7Days ?? 0} onChange={setSettings} />}
       {!report ? (
         error ? (
           <LoadError message={error.message} onRetry={refresh} />

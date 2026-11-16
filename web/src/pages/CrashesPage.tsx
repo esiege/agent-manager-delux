@@ -1,4 +1,4 @@
-// The Crashes tab: every crash the games we build reported, newest first, and one crash's page
+// Crashes, under the Game tab: every crash the games we build reported, newest first, and one crash's page
 // with what's needed to fix it in readable sections: what crashed, what you were doing, what led
 // up to it, the callstack and the end of the log.
 
@@ -7,6 +7,7 @@ import { Alert, Anchor, Badge, Code, Group, Paper, SegmentedControl, Stack, Swit
 import { IconAlertTriangle, IconMessageQuestion } from '@tabler/icons-react';
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
+import { GameSections } from '../components/GameSections';
 import { JsonBlock } from '../components/JsonBlock';
 import { MachineName, machineLabel } from '../components/MachineName';
 import { PageHeader } from '../components/PageHeader';
@@ -66,6 +67,7 @@ export function CrashesPage() {
 
   return (
     <>
+      <GameSections />
       <PageHeader title="Crashes">
         <UpdatedAgo updatedAt={updatedAt} error={error} />
         <Switch label="Show test runs" checked={tests} onChange={(e) => update({ tests: e.currentTarget.checked ? '1' : null })} />
@@ -101,7 +103,7 @@ export function CrashesPage() {
               </Table.Thead>
               <Table.Tbody>
                 {data.crashes.map((c) => (
-                  <Table.Tr key={c.id} style={{ cursor: 'pointer' }} onClick={() => navigate(`/crashes/crash?id=${encodeURIComponent(c.id)}`)}>
+                  <Table.Tr key={c.id} style={{ cursor: 'pointer' }} onClick={() => navigate(`/performance/crash?id=${encodeURIComponent(c.id)}`)}>
                     <Table.Td style={{ whiteSpace: 'nowrap' }}>
                       <RelativeTime iso={c.at} />
                     </Table.Td>
@@ -139,6 +141,7 @@ export function CrashPage() {
   if (!data) {
     return (
       <>
+        <GameSections />
         <PageHeader title="Crash" />
         {error ? <LoadError message={error.message} onRetry={refresh} /> : <TableSkeleton rows={8} />}
       </>
@@ -147,9 +150,10 @@ export function CrashPage() {
   const c = data.crash;
   return (
     <>
+      <GameSections />
       <PageHeader title={`${c.game}${c.build ? ` ${c.build}` : ''} crashed`}>
         <UpdatedAgo updatedAt={updatedAt} error={error} />
-        <Anchor component={Link} to="/crashes" size="sm">
+        <Anchor component={Link} to="/performance/crashes" size="sm">
           All crashes
         </Anchor>
       </PageHeader>

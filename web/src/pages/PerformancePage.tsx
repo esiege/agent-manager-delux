@@ -20,6 +20,7 @@ import { createColumnHelper, getCoreRowModel, getSortedRowModel, useReactTable }
 import { useMemo, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { DataTable } from '../components/DataTable';
+import { GameSections } from '../components/GameSections';
 import { machineLabel } from '../components/MachineName';
 import { PageHeader } from '../components/PageHeader';
 import { EmptyState, LoadError, TableSkeleton } from '../components/States';
@@ -404,6 +405,7 @@ export function PerformancePage() {
 
   return (
     <>
+      <GameSections />
       <PageHeader title="Game Performance">
         <Button component={Link} to="/keys" variant="subtle" size="compact-sm" leftSection={<IconKey size={16} />}>
           Manage game keys

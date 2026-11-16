@@ -96,6 +96,8 @@ export interface Report {
   projects: string[];
   /** True when no usage arrived at all: the PCs haven't updated agentctl yet. */
   noUsage: boolean;
+  /** API-equivalent cost of the last 7 days, whatever the window: what a plan's weekly limit is set against. */
+  costLast7Days: number;
 }
 
 const emptyTotals = (): Totals => ({
@@ -181,6 +183,7 @@ export function buildReport(data: ReportingResponse, filters: Filters): Report {
     return row;
   };
   const models = new Map<string, ModelRow>();
+  let costLast7Days = 0;
   const stories = new Map<string, StoryRow>();
   const storyRow = (agentId: string, story: string | null, type: WorkType, source: WorkTypeSource) => {
     const r = root(agentId);
@@ -229,6 +232,7 @@ export function buildReport(data: ReportingResponse, filters: Filters): Report {
       row.unpricedTokens += unpriced;
     }
     costByGroup[group] += cost;
+    if (Date.parse(u.at) > nowMs - 7 * 86_400_000) costLast7Days += cost;
     const day = days.get(bucketOf(Date.parse(u.at), bucket));
     if (day) {
       day.cost += cost;
@@ -268,6 +272,7 @@ export function buildReport(data: ReportingResponse, filters: Filters): Report {
     stories: [...stories.values()].sort((a, b) => b.hours - a.hours || b.cost - a.cost),
     projects: [...new Set(data.agents.map((a) => projectOf(a.id)))].sort((a, b) => a.localeCompare(b)),
     noUsage: data.usage.length === 0,
+    costLast7Days,
   };
 }
 
