@@ -48,6 +48,8 @@ export interface GroupRow {
   sessions: number;
   /** How many different machines the sessions ran on. */
   machines: number;
+  /** Sessions the game reported as crashed. */
+  crashes: number;
   stats: PerfStats;
 }
 
@@ -63,6 +65,7 @@ export function groupSessions(sessions: PerfSession[], by: GroupBy): GroupRow[] 
       name,
       sessions: list.length,
       machines: new Set(list.map((s) => s.machine)).size,
+      crashes: list.filter((s) => s.crash).length,
       stats: perfStats(mergePerfTotals(list.map((s) => s.totals))),
     }))
     .sort((a, b) => (a.stats.avgFps ?? Infinity) - (b.stats.avgFps ?? Infinity) || a.name.localeCompare(b.name));

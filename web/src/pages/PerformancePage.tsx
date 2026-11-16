@@ -7,13 +7,14 @@ import { BarChart } from '@mantine/charts';
 import {
   PERF_SAMPLE_DAYS,
   mergePerfTotals,
-  perfSessionLive,
+  perfSessionStatus,
   perfStats,
   type PerfSession,
+  type PerfSessionStatus,
   type PerfSessionsResponse,
   type PerfStats,
 } from '@agent-manager-delux/shared';
-import { Alert, Anchor, Badge, Button, Group, Paper, SegmentedControl, Select, SimpleGrid, Stack, Table, Text, Title } from '@mantine/core';
+import { Alert, Anchor, Badge, Button, Group, Paper, SegmentedControl, Select, SimpleGrid, Stack, Table, Text, Title, Tooltip } from '@mantine/core';
 import { IconInfoCircle, IconKey } from '@tabler/icons-react';
 import { createColumnHelper, getCoreRowModel, getSortedRowModel, useReactTable } from '@tanstack/react-table';
 import { useMemo, type ReactNode } from 'react';
@@ -84,10 +85,35 @@ export function Stat({ label, value, note }: { label: string; value: string; not
   );
 }
 
-function Tiles({ sessions, stats }: { sessions: PerfSession[]; stats: PerfStats }) {
-  const machines = new Set(sessions.map((s) => s.machine)).size;
+const STATUS: Record<PerfSessionStatus, { label: string; color: string; tip: string }> = {
+  running: { label: 'Running', color: 'teal', tip: 'Still sending.' },
+  ended: { label: 'Ended', color: 'gray', tip: 'Closed normally.' },
+  crashed: { label: 'Crashed', color: 'red', tip: 'The game reported that this run crashed.' },
+  lost: {
+    label: 'No clean exit',
+    color: 'orange',
+    tip: "Stopped sending without ending: it was killed, lost its connection, or crashed and the game didn't report it.",
+  },
+};
+
+/** How a run went: running, ended, crashed, or stopped without ending. */
+export function PerfStatusBadge({ status, size = 'sm' }: { status: PerfSessionStatus; size?: 'sm' | 'md' }) {
+  const s = STATUS[status];
   return (
-    <SimpleGrid cols={{ base: 2, sm: 3, lg: 5 }} spacing="sm" mb="md">
+    <Tooltip label={s.tip} multiline maw={300}>
+      <Badge color={s.color} variant="light" radius="sm" tt="none" size={size} style={{ flexShrink: 0 }}>
+        {s.label}
+      </Badge>
+    </Tooltip>
+  );
+}
+
+function Tiles({ sessions, stats }: { sessions: Row[]; stats: PerfStats }) {
+  const machines = new Set(sessions.map((s) => s.machine)).size;
+  const crashed = sessions.filter((s) => s.status === 'crashed').length;
+  const lost = sessions.filter((s) => s.status === 'lost').length;
+  return (
+    <SimpleGrid cols={{ base: 2, sm: 3, lg: 6 }} spacing="sm" mb="md">
       <Stat label="Sessions" value={String(sessions.length)} note={`on ${machines} machine${machines === 1 ? '' : 's'}`} />
       <Stat label="Time measured" value={formatDuration(stats.seconds)} />
       <Stat label="Average FPS" value={formatFps(stats.avgFps)} note={stats.frameMsAvg !== null ? `${formatMs(stats.frameMsAvg)} a frame` : undefined} />
@@ -97,6 +123,11 @@ function Tiles({ sessions, stats }: { sessions: PerfSession[]; stats: PerfStats 
         note={stats.frameMsMax !== null ? `slowest ${formatMs(stats.frameMsMax)}` : undefined}
       />
       <Stat label="Hitches a minute" value={formatRate(stats.hitchesPerMinute)} note={`${stats.hitches.toLocaleString()} in all`} />
+      <Stat
+        label="Crashes"
+        value={String(crashed)}
+        note={`${lost} with no clean exit · ${stats.errors.toLocaleString()} error${stats.errors === 1 ? '' : 's'}, ${stats.ensures.toLocaleString()} ensure${stats.ensures === 1 ? '' : 's'}`}
+      />
     </SimpleGrid>
   );
 }
@@ -145,6 +176,8 @@ function Compare({ rows, by, onBy }: { rows: GroupRow[]; by: GroupBy; onBy: (by:
               <Table.Th>{GROUP_LABEL[by]}</Table.Th>
               <Table.Th ta="right">Sessions</Table.Th>
               {by !== 'machine' && <Table.Th ta="right">Machines</Table.Th>}
+              <Table.Th ta="right">Crashes</Table.Th>
+              <Table.Th ta="right">Errors</Table.Th>
               <Table.Th ta="right">Time</Table.Th>
               <Table.Th ta="right">Avg FPS</Table.Th>
               <Table.Th ta="right">p95 frame</Table.Th>
@@ -160,6 +193,10 @@ function Compare({ rows, by, onBy }: { rows: GroupRow[]; by: GroupBy; onBy: (by:
                 <Table.Td>{r.name}</Table.Td>
                 <Table.Td ta="right">{r.sessions}</Table.Td>
                 {by !== 'machine' && <Table.Td ta="right">{r.machines}</Table.Td>}
+                <Table.Td ta="right" c={r.crashes ? 'red' : undefined}>
+                  {r.crashes}
+                </Table.Td>
+                <Table.Td ta="right">{(r.stats.errors + r.stats.ensures).toLocaleString()}</Table.Td>
                 <Table.Td ta="right">{formatDuration(r.stats.seconds)}</Table.Td>
                 <Table.Td ta="right">{formatFps(r.stats.avgFps)}</Table.Td>
                 <Table.Td ta="right">{formatMs(r.stats.frameMsP95)}</Table.Td>
@@ -178,7 +215,7 @@ function Compare({ rows, by, onBy }: { rows: GroupRow[]; by: GroupBy; onBy: (by:
 
 interface Row extends PerfSession {
   stats: PerfStats;
-  live: boolean;
+  status: PerfSessionStatus;
 }
 
 const col = createColumnHelper<Row>();
@@ -197,11 +234,7 @@ const columns = [
     cell: ({ row }) => (
       <Group gap={6} wrap="nowrap">
         <RelativeTime iso={row.original.startedAt} />
-        {row.original.live && (
-          <Badge color="teal" variant="light" radius="sm" tt="none" size="sm">
-            Running
-          </Badge>
-        )}
+        {row.original.status !== 'ended' && <PerfStatusBadge status={row.original.status} />}
       </Group>
     ),
   }),
@@ -254,6 +287,11 @@ const columns = [
     header: 'Hitches/min',
     cell: ({ row }) => right(formatRate(row.original.stats.hitchesPerMinute)),
   }),
+  col.accessor((r) => r.stats.errors + r.stats.ensures, {
+    id: 'errors',
+    header: 'Errors',
+    cell: ({ getValue }) => right(getValue().toLocaleString()),
+  }),
   col.accessor((r) => (r.stats.bound ? BOUND_SHORT[r.stats.bound] : ''), {
     id: 'bound',
     header: 'Limited by',
@@ -285,7 +323,7 @@ function Sessions({ rows }: { rows: Row[] }) {
       <DataTable
         table={table}
         label="Performance sessions"
-        minWidth={1160}
+        minWidth={1240}
         pageSize={50}
         onRowClick={(row) => navigate(`/performance/session?id=${encodeURIComponent(row.original.id)}`)}
       />
@@ -328,7 +366,7 @@ export function PerformancePage() {
     const rows: Row[] = sessions.map((s) => ({
       ...s,
       stats: perfStats(s.totals),
-      live: perfSessionLive(s, nowMs),
+      status: perfSessionStatus(s, nowMs),
     }));
     // Each filter lists what the other two leave, so a choice never leads to nothing.
     return {

@@ -3,9 +3,9 @@
 import '@mantine/charts/styles.css';
 
 import { LineChart, type LineChartSeries } from '@mantine/charts';
-import { LIMITS, PERF_SAMPLE_DAYS, perfSessionLive, perfStats, type PerfSessionDetailResponse } from '@agent-manager-delux/shared';
-import { Alert, Anchor, Badge, Group, SimpleGrid, Stack, Table, Text } from '@mantine/core';
-import { IconInfoCircle } from '@tabler/icons-react';
+import { LIMITS, PERF_SAMPLE_DAYS, perfSessionStatus, perfStats, type PerfSessionDetailResponse } from '@agent-manager-delux/shared';
+import { Alert, Anchor, Badge, Code, Group, SimpleGrid, Stack, Table, Text } from '@mantine/core';
+import { IconAlertTriangle, IconInfoCircle } from '@tabler/icons-react';
 import { useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { JsonBlock } from '../components/JsonBlock';
@@ -29,7 +29,7 @@ import {
 } from '../lib/perf';
 import { formatAbsolute } from '../lib/time';
 import { usePolling } from '../lib/usePolling';
-import { Section, Stat } from './PerformancePage';
+import { PerfStatusBadge, Section, Stat } from './PerformancePage';
 
 const NUMERIC = { fontVariantNumeric: 'tabular-nums' } as const;
 const FIRST = 'var(--am-series-1)';
@@ -108,7 +108,9 @@ export function PerfSessionPage() {
 
   const { session, samples } = data;
   const stats = perfStats(session.totals);
-  const live = perfSessionLive(session, Date.parse(data.now));
+  const status = perfSessionStatus(session, Date.parse(data.now));
+  const errors = session.errors ?? [];
+  const crash = session.crash;
   const hardware = hardwareLine(session);
   const { points, scenes, metrics } = charts;
   // Where the average frame's time went: "the GPU (21.0 ms of the average frame; game thread 9.0 ms, render thread 10.0 ms)".
@@ -134,15 +136,7 @@ export function PerfSessionPage() {
       </PageHeader>
 
       <Group gap="xs" mb="md" wrap="wrap">
-        {live ? (
-          <Badge color="teal" variant="light" radius="sm" tt="none">
-            Running
-          </Badge>
-        ) : (
-          <Badge color="gray" variant="light" radius="sm" tt="none">
-            {session.endedAt ? 'Ended' : 'Stopped sending'}
-          </Badge>
-        )}
+        <PerfStatusBadge status={status} size="md" />
         <Text size="sm" c="dimmed">
           Started {formatAbsolute(session.startedAt)} · last heard from <RelativeTime iso={session.lastSeen} c="dimmed" /> · key {session.keyName}
         </Text>
@@ -162,6 +156,27 @@ export function PerfSessionPage() {
           </Text>
         )}
       </Group>
+
+      {crash && (
+        <Alert variant="light" color="red" icon={<IconAlertTriangle size={18} />} title={`Crashed${crash.t != null ? ` at ${formatClock(crash.t)}` : ''}${crash.scene ? ` in ${crash.scene}` : ''}`} mb="md">
+          <Text size="sm" style={{ overflowWrap: 'anywhere' }}>
+            {crash.reason}
+          </Text>
+          {crash.callstack && (
+            <Code block mt="xs" style={{ maxHeight: 360, overflow: 'auto', whiteSpace: 'pre' }}>
+              {crash.callstack}
+            </Code>
+          )}
+          <Text size="xs" c="dimmed" mt="xs">
+            Reported {formatAbsolute(crash.reportedAt)}
+          </Text>
+        </Alert>
+      )}
+      {status === 'lost' && (
+        <Alert variant="light" color="orange" icon={<IconInfoCircle size={18} />} mb="md">
+          This run stopped sending without ending. It was killed, lost its connection, or crashed and the game didn&apos;t report it on the next launch.
+        </Alert>
+      )}
 
       <SimpleGrid cols={{ base: 2, sm: 3, lg: 6 }} spacing="sm" mb="md">
         <Stat label="Average FPS" value={formatFps(stats.avgFps)} note={stats.frameMsAvg !== null ? `${formatMs(stats.frameMsAvg)} a frame` : undefined} />
@@ -314,6 +329,54 @@ export function PerfSessionPage() {
                 </Table.Tbody>
               </Table>
             </Table.ScrollContainer>
+          </Section>
+        </Stack>
+      )}
+
+      {(errors.length > 0 || stats.errors + stats.ensures > 0) && (
+        <Stack mt="md">
+          <Section
+            title="Errors"
+            description={`${stats.errors.toLocaleString()} error${stats.errors === 1 ? '' : 's'} and ${stats.ensures.toLocaleString()} failed check${stats.ensures === 1 ? '' : 's'} (ensures) logged. Each message is listed once, in the order first logged${errors.length >= LIMITS.perfErrorsKept ? ` (the first ${LIMITS.perfErrorsKept})` : ''}.`}
+          >
+            {errors.length === 0 ? (
+              <Text size="sm" c="dimmed">
+                The game counted them but didn&apos;t send the messages.
+              </Text>
+            ) : (
+              <Table.ScrollContainer minWidth={560} type="native">
+                <Table fz="sm" verticalSpacing={4} aria-label="Errors">
+                  <Table.Thead>
+                    <Table.Tr>
+                      <Table.Th>First at</Table.Th>
+                      <Table.Th>Kind</Table.Th>
+                      <Table.Th>Scene</Table.Th>
+                      <Table.Th>Message</Table.Th>
+                      <Table.Th ta="right">Times</Table.Th>
+                    </Table.Tr>
+                  </Table.Thead>
+                  <Table.Tbody>
+                    {errors.map((e) => (
+                      <Table.Tr key={`${e.kind}:${e.message}`}>
+                        <Table.Td style={NUMERIC}>{formatClock(e.t)}</Table.Td>
+                        <Table.Td>
+                          <Badge color={e.kind === 'warning' ? 'yellow' : e.kind === 'ensure' ? 'orange' : 'red'} variant="light" radius="sm" tt="none" size="sm">
+                            {e.kind}
+                          </Badge>
+                        </Table.Td>
+                        <Table.Td>{e.scene ?? '–'}</Table.Td>
+                        <Table.Td style={{ overflowWrap: 'anywhere' }}>
+                          <Code style={{ whiteSpace: 'pre-wrap' }}>{e.message}</Code>
+                        </Table.Td>
+                        <Table.Td ta="right" style={NUMERIC}>
+                          {e.count.toLocaleString()}
+                        </Table.Td>
+                      </Table.Tr>
+                    ))}
+                  </Table.Tbody>
+                </Table>
+              </Table.ScrollContainer>
+            )}
           </Section>
         </Stack>
       )}
