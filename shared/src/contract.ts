@@ -84,6 +84,13 @@ export const LIMITS = {
   /** Single slow frames in one call, and the worst of them kept on a session. */
   perfHitchesPerCall: 200,
   perfHitchesKept: 50,
+  /** Logged errors in one call, and the distinct messages kept on a session (the first ones). */
+  perfErrorsPerCall: 100,
+  perfErrorsKept: 30,
+  perfErrorMessageLength: 1000,
+  /** A crash's one-line reason, and its callstack. */
+  perfCrashReasonLength: 1000,
+  perfCrashCallstackLength: 16000,
   /** A feedback request's one-line title, and its Markdown body. */
   feedbackTitleLength: 200,
   feedbackBodyLength: 8000,
@@ -748,7 +755,45 @@ export interface PerfSessionInput {
   details?: Record<string, unknown>;
   /** True once the run is over. */
   ended?: boolean;
+  /**
+   * The run crashed. Usually sent on the next launch, for the previous session: the game can't
+   * send it while crashing. Ends the session at the last time it was heard from.
+   */
+  crash?: PerfCrashInput;
   test?: boolean;
+}
+
+export interface PerfCrashInput {
+  /** One line: the exception, assert or signal, such as "EXCEPTION_ACCESS_VIOLATION reading address 0x0". */
+  reason: string;
+  /** The callstack or crash report summary, as text. */
+  callstack?: string;
+  /** Seconds since the session started, when it crashed, if known. */
+  t?: number;
+  /** The level, scene or menu it crashed in. */
+  scene?: string;
+}
+
+export interface PerfCrash extends PerfCrashInput {
+  reportedAt: string;
+}
+
+/** An error or failed check the game logged. */
+export interface PerfErrorEvent {
+  /** Seconds since the session started. */
+  t: number;
+  /** error: an error logged. ensure: a failed check that didn't stop the game (Unreal's ensure). warning: worth a look. */
+  kind: PerfErrorKind;
+  message: string;
+  scene?: string;
+}
+
+export const PERF_ERROR_KINDS = ['error', 'ensure', 'warning'] as const;
+export type PerfErrorKind = (typeof PERF_ERROR_KINDS)[number];
+
+/** One distinct message kept on a session: the first time it was logged, and how often. */
+export interface PerfErrorSeen extends PerfErrorEvent {
+  count: number;
 }
 
 /**
@@ -768,6 +813,9 @@ export interface PerfSampleInput {
   frameMsMax?: number;
   /** Frames that took long enough to notice; the game picks the threshold (50 ms is common). */
   hitches?: number;
+  /** Errors and failed checks (ensures) logged in the window. */
+  errors?: number;
+  ensures?: number;
   /** Average per frame. Engines that split the CPU's work by thread send gameMs and renderMs instead of cpuMs. */
   cpuMs?: number;
   gameMs?: number;
@@ -800,6 +848,8 @@ export interface PerfSamplesInput {
   samples: PerfSampleInput[];
   /** The session keeps the worst LIMITS.perfHitchesKept of all it is sent. */
   hitchEvents?: PerfHitch[];
+  /** Errors as they were logged. The session keeps the first LIMITS.perfErrorsKept distinct messages, with a count each. */
+  errorEvents?: PerfErrorEvent[];
   test?: boolean;
 }
 
@@ -822,6 +872,9 @@ export interface PerfTotals {
   frames: number;
   seconds: number;
   hitches: number;
+  /** Missing on sessions stored before errors were counted: read as 0. */
+  errors?: number;
+  ensures?: number;
   frameMsMax: number | null;
   memoryMbMax: number | null;
   vramMbMax: number | null;
@@ -852,9 +905,13 @@ export interface PerfSession {
   details: Record<string, unknown>;
   /** The slowest single frames the game reported, worst first. */
   worstHitches: PerfHitch[];
+  /** The first distinct errors logged, in order. Missing on older sessions. */
+  errors?: PerfErrorSeen[];
   startedAt: string;
   lastSeen: string;
   endedAt: string | null;
+  /** Set when the game reported that this run crashed. Missing on older sessions. */
+  crash?: PerfCrash | null;
   totals: PerfTotals;
   /** Name of the key that sent it. */
   keyName: string;
@@ -864,7 +921,7 @@ export interface PerfSessionResponse extends WriteResponse<PerfSession> {
   sessionUrl: string;
 }
 
-export interface PerfSamplesResponse extends WriteResponse<{ count: number; duplicates: number; hitchEvents: number }> {}
+export interface PerfSamplesResponse extends WriteResponse<{ count: number; duplicates: number; hitchEvents: number; errorEvents: number }> {}
 
 /** GET /api/v1/perf/sessions, as the owner or with a machine key: newest first. */
 export interface PerfSessionsResponse {

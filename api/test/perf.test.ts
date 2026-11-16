@@ -187,6 +187,7 @@ describe('performance samples', () => {
       count: 2,
       duplicates: 0,
       hitchEvents: 0,
+      errorEvents: 0,
     });
 
     const detail = (await call(perfSessionDetail, 'GET', `/api/v1/perf/session?id=${SESSION}`, { owner: true })).body as PerfSessionDetailResponse;
@@ -215,6 +216,7 @@ describe('performance samples', () => {
       count: 1,
       duplicates: 1,
       hitchEvents: 0,
+      errorEvents: 0,
     });
     const list = (await call(perfSessions, 'GET', '/api/v1/perf/sessions', { owner: true })).body as PerfSessionsResponse;
     expect(list.sessions).toHaveLength(1);
@@ -262,7 +264,7 @@ describe('performance samples', () => {
         { t: 4.2, frameMs: 60, scene: 'fire' },
       ],
     });
-    expect((res.body as PerfSamplesResponse).stored).toEqual({ count: 0, duplicates: 0, hitchEvents: 2 });
+    expect((res.body as PerfSamplesResponse).stored).toEqual({ count: 0, duplicates: 0, hitchEvents: 2, errorEvents: 0 });
     const { session } = (await call(perfSessionDetail, 'GET', `/api/v1/perf/session?id=${SESSION}`, { owner: true })).body as PerfSessionDetailResponse;
     expect(session.loadSeconds).toBe(11.8);
     expect(session.worstHitches).toEqual([
@@ -291,6 +293,74 @@ describe('performance samples', () => {
         error: 'No performance session never-started-1; start it with POST /api/v1/perf/session first',
       },
     });
+  });
+});
+
+describe('errors and crashes', () => {
+  const stored = async () => {
+    const owner = await call(perfSessionDetail, 'GET', `/api/v1/perf/session?id=${SESSION}`, { owner: true });
+    return (owner.body as PerfSessionDetailResponse).session;
+  };
+
+  it('counts errors from the samples and keeps each message once, first logged first', async () => {
+    await start(key);
+    const res = await send(key, [{ t: 10, seconds: 10, frames: 600, errors: 3, ensures: 1 }], {
+      errorEvents: [
+        { t: 8, kind: 'error', message: 'Texture missing: T_Rock', scene: 'forest' },
+        { t: 2, message: 'Shader failed to compile' },
+        { t: 9, kind: 'error', message: 'Texture missing: T_Rock' },
+        { t: 5, kind: 'ensure', message: 'Ensure failed: IsValid(Owner)' },
+      ],
+    });
+    expect(res.status).toBe(200);
+    expect((res.body as PerfSamplesResponse).stored.errorEvents).toBe(4);
+    await send(key, [], { errorEvents: [{ t: 12, message: 'token=abcdef1234567 rejected' }] });
+
+    const s = await stored();
+    expect(perfStats(s.totals)).toMatchObject({ errors: 3, ensures: 1 });
+    expect(s.errors).toEqual([
+      { t: 2, kind: 'error', message: 'Shader failed to compile', count: 1 },
+      { t: 5, kind: 'ensure', message: 'Ensure failed: IsValid(Owner)', count: 1 },
+      { t: 8, kind: 'error', message: 'Texture missing: T_Rock', scene: 'forest', count: 2 },
+      { t: 12, kind: 'error', message: 'token=[masked] rejected', count: 1 },
+    ]);
+  });
+
+  it('refuses an error without a message', async () => {
+    await start(key);
+    const res = await send(key, [], { errorEvents: [{ t: 1, kind: 'error' }] });
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: 'errorEvents[0].message is required and must be a non-empty string' });
+  });
+
+  it('records a crash reported on the next launch, ending the run when it was last heard from', async () => {
+    await start(key);
+    await send(key, [{ t: 10, seconds: 10, frames: 600 }]);
+    const lastHeard = clock.toISOString();
+    clock = new Date(clock.getTime() + 3_600_000);
+
+    const res = await start(key, { crash: { reason: 'EXCEPTION_ACCESS_VIOLATION reading address 0x0', callstack: 'UMyActor::Tick\nFTickTask::Run', t: 312, scene: 'forest' } });
+    expect(res.status).toBe(200);
+    const s = await stored();
+    expect(s.crash).toEqual({
+      reason: 'EXCEPTION_ACCESS_VIOLATION reading address 0x0',
+      callstack: 'UMyActor::Tick\nFTickTask::Run',
+      t: 312,
+      scene: 'forest',
+      reportedAt: clock.toISOString(),
+    });
+    expect(s.endedAt).toBe(lastHeard);
+    expect(s.lastSeen).toBe(lastHeard);
+
+    // A later update without a crash keeps it.
+    await start(key, { build: '0.4.3' });
+    expect((await stored()).crash?.reason).toBe('EXCEPTION_ACCESS_VIOLATION reading address 0x0');
+  });
+
+  it('needs a reason for a crash', async () => {
+    const res = await start(key, { crash: { callstack: 'x' } });
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: 'crash.reason is required and must be a non-empty string' });
   });
 });
 

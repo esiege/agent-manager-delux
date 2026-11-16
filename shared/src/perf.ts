@@ -3,6 +3,8 @@
 import {
   LIMITS,
   PERF_LIVE_SECONDS,
+  type PerfErrorEvent,
+  type PerfErrorSeen,
   type PerfHitch,
   type PerfSample,
   type PerfSampleInput,
@@ -18,6 +20,8 @@ export function emptyPerfTotals(): PerfTotals {
     frames: 0,
     seconds: 0,
     hitches: 0,
+    errors: 0,
+    ensures: 0,
     frameMsMax: null,
     memoryMbMax: null,
     vramMbMax: null,
@@ -46,6 +50,8 @@ export function addPerfSamples(totals: PerfTotals, samples: PerfSampleInput[]): 
     out.frames += s.frames;
     out.seconds += s.seconds;
     out.hitches += s.hitches ?? 0;
+    out.errors = (out.errors ?? 0) + (s.errors ?? 0);
+    out.ensures = (out.ensures ?? 0) + (s.ensures ?? 0);
     out.frameMsMax = max(out.frameMsMax, s.frameMsMax);
     out.memoryMbMax = max(out.memoryMbMax, s.memoryMb);
     out.vramMbMax = max(out.vramMbMax, s.vramMb);
@@ -78,6 +84,9 @@ export interface PerfStats {
   frameMsMax: number | null;
   hitches: number;
   hitchesPerMinute: number | null;
+  /** Errors and failed checks logged, from the samples' counts. */
+  errors: number;
+  ensures: number;
   cpuMs: number | null;
   gameMs: number | null;
   renderMs: number | null;
@@ -107,6 +116,8 @@ export function perfStats(t: PerfTotals): PerfStats {
     frameMsMax: t.frameMsMax,
     hitches: t.hitches,
     hitchesPerMinute: t.seconds > 0 ? (t.hitches / t.seconds) * 60 : null,
+    errors: t.errors ?? 0,
+    ensures: t.ensures ?? 0,
     cpuMs: mean(t.cpuMs),
     gameMs: mean(t.gameMs),
     renderMs: mean(t.renderMs),
@@ -125,6 +136,8 @@ export function mergePerfTotals(all: PerfTotals[]): PerfTotals {
     out.frames += t.frames;
     out.seconds += t.seconds;
     out.hitches += t.hitches;
+    out.errors = (out.errors ?? 0) + (t.errors ?? 0);
+    out.ensures = (out.ensures ?? 0) + (t.ensures ?? 0);
     out.frameMsMax = max(out.frameMsMax, t.frameMsMax ?? undefined);
     out.memoryMbMax = max(out.memoryMbMax, t.memoryMbMax ?? undefined);
     out.vramMbMax = max(out.vramMbMax, t.vramMbMax ?? undefined);
@@ -141,6 +154,45 @@ export function worstPerfHitches(kept: PerfHitch[], more: PerfHitch[]): PerfHitc
   const byTime = new Map<number, PerfHitch>();
   for (const h of [...kept, ...more]) byTime.set(Math.round(h.t * 1000), h);
   return [...byTime.values()].sort((a, b) => b.frameMs - a.frameMs || a.t - b.t).slice(0, LIMITS.perfHitchesKept);
+}
+
+/**
+ * The errors kept on a session with these added: one entry per distinct message (and kind), in the
+ * order first logged, with how often it was sent. New messages past LIMITS.perfErrorsKept are dropped;
+ * repeats of kept ones are still counted.
+ */
+export function addPerfErrors(kept: PerfErrorSeen[], more: PerfErrorEvent[]): PerfErrorSeen[] {
+  const out = kept.map((e) => ({ ...e }));
+  const byMessage = new Map(out.map((e) => [`${e.kind}\n${e.message}`, e]));
+  for (const e of more) {
+    const key = `${e.kind}\n${e.message}`;
+    const seen = byMessage.get(key);
+    if (seen) {
+      seen.count += 1;
+      if (e.t < seen.t) {
+        seen.t = e.t;
+        seen.scene = e.scene;
+      }
+    } else if (out.length < LIMITS.perfErrorsKept) {
+      const added: PerfErrorSeen = { ...e, count: 1 };
+      out.push(added);
+      byMessage.set(key, added);
+    }
+  }
+  return out.sort((a, b) => a.t - b.t);
+}
+
+/**
+ * How a run went. crashed: the game said so. ended: it closed normally. running: still sending.
+ * lost: it stopped sending without ending, so it was killed, lost its connection or crashed
+ * without saying so.
+ */
+export type PerfSessionStatus = 'running' | 'ended' | 'crashed' | 'lost';
+
+export function perfSessionStatus(s: Pick<PerfSession, 'endedAt' | 'lastSeen' | 'crash'>, nowMs: number): PerfSessionStatus {
+  if (s.crash) return 'crashed';
+  if (s.endedAt) return 'ended';
+  return perfSessionLive(s, nowMs) ? 'running' : 'lost';
 }
 
 export function perfSampleId(sessionId: string, t: number): string {

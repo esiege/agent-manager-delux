@@ -1,5 +1,5 @@
 // Performance of the games and apps we build. Games send sessions and samples with a key
-// (a game key is enough). The Performance tab reads them as the signed-in owner, and agents
+// (a game key is enough). The Game tab reads them as the signed-in owner, and agents
 // read them with a machine key (agentctl perf).
 // What games send is described in web/public/performance.md.
 
@@ -7,9 +7,11 @@ import {
   LIMITS,
   PERF_MAX_DAYS,
   PERF_SESSION_ID,
+  addPerfErrors,
   addPerfSamples,
   emptyPerfTotals,
   maskDeep,
+  maskSecrets,
   perfSampleId,
   validatePerfSamples,
   validatePerfSession,
@@ -55,14 +57,23 @@ export const perfSession: Handler = async (req, ctx) => {
     refreshHz: pick(input.refreshHz, existing?.refreshHz),
     loadSeconds: pick(input.loadSeconds, existing?.loadSeconds),
     worstHitches: existing?.worstHitches ?? [],
+    errors: existing?.errors ?? [],
     details: {
       ...existing?.details,
       ...(input.details ? maskDeep(input.details) : {}),
     },
     startedAt: existing?.startedAt ?? now,
-    lastSeen: now,
-    // `ended: false` reopens it: the game carried on after all.
-    endedAt: input.ended === undefined ? (existing?.endedAt ?? null) : input.ended ? (existing?.endedAt ?? now) : null,
+    // A crash is usually reported on the next launch: the run itself was last heard from earlier.
+    lastSeen: input.crash && existing ? existing.lastSeen : now,
+    endedAt: input.crash
+      ? (existing?.endedAt ?? existing?.lastSeen ?? now)
+      : input.ended === undefined
+        ? (existing?.endedAt ?? null)
+        : input.ended
+          ? (existing?.endedAt ?? now)
+          : // `ended: false` reopens it: the game carried on after all.
+            null,
+    crash: input.crash ? { ...maskDeep(input.crash), reportedAt: now } : (existing?.crash ?? null),
     totals: existing?.totals ?? emptyPerfTotals(),
     keyName: key.name,
   };
@@ -105,12 +116,18 @@ export const perfSamples: Handler = async (req, ctx) => {
       lastSeen: now,
       totals: addPerfSamples(session.totals, added),
       worstHitches: worstPerfHitches(session.worstHitches, input.hitchEvents ?? []),
+      errors: addPerfErrors(session.errors ?? [], (input.errorEvents ?? []).map((e) => ({ ...e, message: maskSecrets(e.message) }))),
     });
   }
   const body: PerfSamplesResponse = {
     ok: true,
     test: Boolean(input.test),
-    stored: { count: added.length, duplicates: samples.length - added.length, hitchEvents: input.hitchEvents?.length ?? 0 },
+    stored: {
+      count: added.length,
+      duplicates: samples.length - added.length,
+      hitchEvents: input.hitchEvents?.length ?? 0,
+      errorEvents: input.errorEvents?.length ?? 0,
+    },
     warnings: result.warnings,
   };
   return ok(body);

@@ -6,6 +6,7 @@ import {
   ALERT_CHANNELS,
   ALERT_EVENTS,
   LIMITS,
+  PERF_ERROR_KINDS,
   PERF_SESSION_ID,
   REPORTED_STATES,
   WORK_TYPES,
@@ -14,6 +15,8 @@ import {
   type AlertEvent,
   type AlertSubscriptionInput,
   type HeartbeatInput,
+  type PerfCrashInput,
+  type PerfErrorEvent,
   type PerfHitch,
   type PerfSampleInput,
   type PerfSamplesInput,
@@ -315,6 +318,7 @@ export function validatePerfSession(body: unknown): Result<PerfSessionInput> {
     if (loadSeconds !== undefined) value.loadSeconds = loadSeconds;
     const details = { ...(r.optionalObject('details') ?? {}) };
     const ended = r.optionalBool('ended');
+    const crash = readPerfCrash(r.optionalObject('crash'), r.warnings);
     const test = r.optionalBool('test');
 
     const extra = r.unknownKeys();
@@ -322,9 +326,44 @@ export function validatePerfSession(body: unknown): Result<PerfSessionInput> {
     if (extra.length) r.warnings.push(`Unknown field(s) ${extra.join(', ')} were kept in details`);
     if (Object.keys(details).length) value.details = details;
     if (ended !== undefined) value.ended = ended;
+    if (crash) value.crash = crash;
     if (test !== undefined) value.test = test;
     return value;
   });
+}
+
+function readPerfCrash(raw: Record<string, unknown> | undefined, warnings: string[]): PerfCrashInput | undefined {
+  if (!raw) return undefined;
+  const r = new Reader(raw, 'crash');
+  const crash: PerfCrashInput = { reason: r.requiredString('reason', LIMITS.perfCrashReasonLength) };
+  const callstack = r.optionalString('callstack', LIMITS.perfCrashCallstackLength, { truncate: true });
+  if (callstack?.trim()) crash.callstack = callstack.trim();
+  const t = r.optionalNumber('t', 0, MAX_T);
+  if (t !== undefined) crash.t = t;
+  const scene = r.optionalString('scene', LIMITS.nameLength, { truncate: true });
+  if (scene?.trim()) crash.scene = scene.trim();
+  const extra = r.unknownKeys();
+  if (extra.length) warnings.push(`Unknown field(s) ${extra.map((k) => `crash.${k}`).join(', ')} were ignored`);
+  warnings.push(...r.warnings);
+  return crash;
+}
+
+function readPerfError(raw: unknown, i: number, warnings: string[]): PerfErrorEvent {
+  const path = `errorEvents[${i}]`;
+  if (!isObject(raw)) throw new Invalid(`${path} must be a JSON object`);
+  const r = new Reader(raw, path);
+  const t = r.optionalNumber('t', 0, MAX_T);
+  if (t === undefined) throw new Invalid(`${path}.t is required and must be a number`);
+  const kind = r.oneOf('kind', PERF_ERROR_KINDS, false) ?? 'error';
+  const message = r.optionalString('message', LIMITS.perfErrorMessageLength, { truncate: true })?.trim();
+  if (!message) throw new Invalid(`${path}.message is required and must be a non-empty string`);
+  const event: PerfErrorEvent = { t, kind, message };
+  const scene = r.optionalString('scene', LIMITS.nameLength, { truncate: true });
+  if (scene?.trim()) event.scene = scene.trim();
+  const extra = r.unknownKeys();
+  if (extra.length && i === 0) warnings.push(`Unknown field(s) ${extra.join(', ')} on errorEvents were ignored`);
+  if (r.warnings.length && i === 0) warnings.push(...r.warnings);
+  return event;
 }
 
 const SAMPLE_MS = ['frameMsP50', 'frameMsP95', 'frameMsP99', 'frameMsMax', 'cpuMs', 'gameMs', 'renderMs', 'gpuMs', 'pingMs'] as const;
@@ -351,6 +390,10 @@ function readPerfSample(raw: unknown, i: number, warnings: string[]): PerfSample
   }
   const hitches = r.optionalNumber('hitches', 0, 100_000_000);
   if (hitches !== undefined) sample.hitches = Math.round(hitches);
+  for (const field of ['errors', 'ensures'] as const) {
+    const v = r.optionalNumber(field, 0, 100_000_000);
+    if (v !== undefined) sample[field] = Math.round(v);
+  }
   for (const field of ['memoryMb', 'vramMb', 'drawCalls'] as const) {
     const v = r.optionalNumber(field, 0, 1_000_000_000);
     if (v !== undefined) sample[field] = v;
@@ -407,8 +450,15 @@ export function validatePerfSamples(body: unknown): Result<PerfSamplesInput> {
     if (hitchEvents.length > LIMITS.perfHitchesPerCall) {
       throw new Invalid(`hitchEvents has ${hitchEvents.length} items; send at most ${LIMITS.perfHitchesPerCall} per call`);
     }
-    const raw = r.get('samples') === undefined && hitchEvents.length ? [] : r.array('samples');
-    if (raw.length === 0 && hitchEvents.length === 0) throw new Invalid('samples must hold at least one sample');
+    const rawErrors = r.get('errorEvents');
+    if (rawErrors !== undefined && rawErrors !== null && !Array.isArray(rawErrors)) throw new Invalid('errorEvents must be an array');
+    const errorEvents = ((rawErrors as unknown[] | null | undefined) ?? []).map((e, i) => readPerfError(e, i, r.warnings));
+    if (errorEvents.length > LIMITS.perfErrorsPerCall) {
+      throw new Invalid(`errorEvents has ${errorEvents.length} items; send at most ${LIMITS.perfErrorsPerCall} per call`);
+    }
+    const events = hitchEvents.length + errorEvents.length;
+    const raw = r.get('samples') === undefined && events ? [] : r.array('samples');
+    if (raw.length === 0 && events === 0) throw new Invalid('samples must hold at least one sample');
     if (raw.length > LIMITS.perfSamplesPerCall) {
       throw new Invalid(`samples has ${raw.length} items; send at most ${LIMITS.perfSamplesPerCall} per call`);
     }
@@ -418,6 +468,7 @@ export function validatePerfSamples(body: unknown): Result<PerfSamplesInput> {
     if (extra.length) r.warnings.push(`Unknown field(s) ${extra.join(', ')} were ignored`);
     const value: PerfSamplesInput = { sessionId, samples };
     if (hitchEvents.length) value.hitchEvents = hitchEvents;
+    if (errorEvents.length) value.errorEvents = errorEvents;
     if (test !== undefined) value.test = test;
     return value;
   });
