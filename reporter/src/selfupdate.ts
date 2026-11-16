@@ -1,4 +1,4 @@
-// agentctl updating itself, when the owner presses "Update all PCs" (api/src/handlers/agentctl.ts).
+// agentctl updating itself, when the owner presses "Auto-update all PCs" (api/src/handlers/agentctl.ts).
 // The heartbeat sends the SHA-256 of the agentctl.js it runs. When the answer offers an update,
 // it downloads agentctl.js from the same site, checks the hash and that the file runs, swaps it
 // in, and runs `install --after-update`: that refreshes the hooks, stops this heartbeat and starts

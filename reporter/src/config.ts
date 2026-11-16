@@ -17,7 +17,7 @@ export interface Config {
    */
   messages?: boolean;
   /**
-   * False after `agentctl install --no-auto-update`: this PC ignores the owner's "Update all PCs".
+   * False after `agentctl install --no-auto-update`: this PC ignores the owner's "Auto-update all PCs".
    * On unless turned off.
    */
   autoUpdate?: boolean;

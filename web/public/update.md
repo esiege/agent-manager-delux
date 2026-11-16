@@ -21,7 +21,7 @@ node "$HOME/.agent-manager/agentctl.js" version
 
 ## What's new in version 6
 
-- **Updates from the site**: after this update, the person can update every PC at once with **Update all PCs** on the Instructions tab, without sending each one this page. agentctl downloads the new version itself, checks its SHA-256 and that it runs, installs it and restarts its heartbeat. `agentctl install --no-auto-update` turns it off on a PC; `agentctl doctor` shows it.
+- **Updates from the site**: after this update, the person can update every PC at once with **Auto-update all PCs** on the Instructions tab, without sending each one this page. agentctl downloads the new version itself, checks its SHA-256 and that it runs, installs it and restarts its heartbeat. `agentctl install --no-auto-update` turns it off on a PC; `agentctl doctor` shows it.
 - **Game crashes and errors**: games can report crashes and logged errors (see `$MANAGER_URL/performance.md`), and `agentctl perf` shows each session's error count and status.
 
 ## In version 5

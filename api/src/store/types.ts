@@ -107,7 +107,7 @@ export interface Store {
   putMachine(record: MachineRecord): Promise<void>;
   listMachines(): Promise<MachineRecord[]>;
 
-  /** The owner's latest "Update all PCs", or null. */
+  /** The owner's latest "Auto-update all PCs", or null. */
   getUpdateRequest(): Promise<AgentctlUpdateRequest | null>;
   putUpdateRequest(request: AgentctlUpdateRequest): Promise<void>;
 }

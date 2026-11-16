@@ -1,6 +1,6 @@
 // Updating agentctl on every PC from the site. The API is built with the hash of the agentctl.js
 // deployed next to it (api/build.mjs). Heartbeats say which agentctl each PC runs; when the owner
-// presses "Update all PCs", a heartbeat from a PC running anything else is answered with the
+// presses "Auto-update all PCs", a heartbeat from a PC running anything else is answered with the
 // update, and agentctl downloads it, checks the hash and installs it (reporter/src/selfupdate.ts).
 
 import type {

@@ -202,7 +202,7 @@ export interface AgentctlUpdateAttempt {
   error?: string;
 }
 
-/** The owner's "Update all PCs": every PC with self-updates on moves to the agentctl deployed then. */
+/** The owner's "Auto-update all PCs": every PC with self-updates on moves to the agentctl deployed then. */
 export interface AgentctlUpdateRequest {
   requestedAt: string;
   /** The deployed agentctl.js the PCs should run. */

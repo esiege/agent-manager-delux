@@ -713,7 +713,7 @@ async function installCommand(flags: Record<string, string>) {
   agentctl:  ${paths.script()}
   Hooks:     ${paths.claudeSettings()}${backup ? `\n  Backup:    ${backup}` : ''}
   Messages:  ${messages ? 'on: you can send messages to these sessions from Agent Manager Delux' : 'off (--allow-messages turns them on)'}
-  Updates:   ${autoUpdate ? 'on: "Update all PCs" in Agent Manager Delux updates agentctl here (--no-auto-update turns it off)' : 'off: update with the update sentence (--auto-update turns them on)'}
+  Updates:   ${autoUpdate ? 'on: "Auto-update all PCs" in Agent Manager Delux updates agentctl here (--no-auto-update turns it off)' : 'off: update with the update sentence (--auto-update turns them on)'}
 New Claude Code sessions on this PC now appear at ${url}/agents within a few seconds.
 Sessions that are already open start reporting once Claude Code reloads its settings.`);
 }
@@ -823,7 +823,7 @@ async function doctorCommand() {
   }
   const attempt = lastAttempt();
   lines.push(
-    `Updates:    ${config?.autoUpdate === false ? 'off (agentctl install --auto-update turns them on)' : 'on: "Update all PCs" updates this PC'}` +
+    `Updates:    ${config?.autoUpdate === false ? 'off (agentctl install --auto-update turns them on)' : 'on: "Auto-update all PCs" updates this PC'}` +
       `; running ${fileSha256(paths.script())?.slice(0, 12) ?? '?'}` +
       (attempt ? `
             last: ${attempt.status} ${attempt.at}${attempt.error ? ` (${attempt.error})` : ''}` : ''),

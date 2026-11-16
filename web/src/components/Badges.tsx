@@ -14,7 +14,7 @@ export function StateBadge({ state }: { state: AgentState }) {
 export function OldSetupBadge({ version }: { version: number | null }) {
   return (
     <Tooltip
-      label={`Set up from instructions v${version ?? '?'}. The current version is v${INSTRUCTIONS_VERSION}: press Update all PCs on the Instructions tab, or send its agent the update sentence (PCs set up before v6 need the sentence once).`}
+      label={`Set up from instructions v${version ?? '?'}. The current version is v${INSTRUCTIONS_VERSION}: press Auto-update all PCs on the Instructions tab, or send its agent the update sentence (PCs set up before v6 need the sentence once).`}
       multiline
       maw={320}
     >

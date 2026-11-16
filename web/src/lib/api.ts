@@ -135,7 +135,7 @@ export const api = {
   hideAgents: (agentIds: string[], hidden: boolean) =>
     request<HideAgentsResponse>('/agents/hide', { method: 'POST', body: { agentIds, hidden } }),
   agentctl: (signal?: AbortSignal) => request<AgentctlStatusResponse>('/agentctl', { signal }),
-  /** "Update all PCs": each PC with self-updates on moves to the agentctl deployed now. */
+  /** "Auto-update all PCs": each PC with self-updates on moves to the agentctl deployed now. */
   updateAllPcs: () => request<AgentctlUpdateResponse>('/agentctl/update', { method: 'POST', body: {} }),
   sendMessage: (input: SendMessageInput) => request<SendMessageResponse>('/messages', { method: 'POST', body: input }),
   feedback: (signal?: AbortSignal) => request<FeedbackListResponse>('/feedback', { signal }),

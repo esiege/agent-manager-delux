@@ -1,4 +1,4 @@
-// "Update all PCs": every PC with self-updates on installs the agentctl deployed now, at its next
+// "Auto-update all PCs": every PC with self-updates on installs the agentctl deployed now, at its next
 // heartbeat (about a minute). Lists each PC with where its agentctl stands.
 
 import type { AgentctlStatusResponse } from '@agent-manager-delux/shared';
@@ -73,7 +73,7 @@ export function UpdatePcs() {
             loading={busy}
             disabled={!data.latest || (machines.length > 0 && current === machines.length)}
           >
-            Update all PCs
+            Auto-update all PCs
           </Button>
         </Tooltip>
         {machines.length > 0 && (
@@ -116,9 +116,6 @@ export function UpdatePcs() {
           })}
         </Stack>
       </Collapse>
-      <Text size="xs" c="dimmed">
-        PCs set up before version 6 can&apos;t update themselves yet: send each one the update sentence once.
-      </Text>
     </Stack>
   );
 }

@@ -196,7 +196,7 @@ export function InstructionsPage() {
         <aside className="am-side">
           <SideItem
             title="Need to update?"
-            description="Press Update all PCs to update every PC at once, or send one PC's agent the update sentence. Agents on an old version are marked “old version”."
+            description="Press Auto-update all PCs to update every PC at once, or send one PC's agent the update sentence. Agents on an old version are marked “old version”."
             sentence={updateSentence}
             copyLabel="Copy update sentence"
             meta={`Latest: version ${INSTRUCTIONS_VERSION}, ${INSTRUCTIONS_UPDATED}`}
