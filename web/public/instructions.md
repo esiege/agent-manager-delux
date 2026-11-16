@@ -1,6 +1,6 @@
 # Agent Manager Delux: how to report in
 
-Instructions version: **4** · Updated: **2026-11-15**
+Instructions version: **5** · Updated: **2026-11-16**
 
 Already set up on this PC? Follow `$MANAGER_URL/update.md` instead: it checks whether you're on the latest and updates if not.
 
@@ -97,8 +97,8 @@ To remove it: `node "$HOME/.agent-manager/agentctl.js" uninstall`.
 ### Asking the person for feedback
 
 When you want the person's view (which of two designs, whether a level feels right, how a sound
-lands), ask on the **Feedback** tab instead of by email or in chat. They answer there in a click or
-two, and the answer comes back to you.
+lands), ask on the **Feedback** tab instead of by email or in chat. They answer there, or straight
+from an email if they've subscribed, in a click or two, and the answer comes back to you.
 
 ```bash
 node "$HOME/.agent-manager/agentctl.js" feedback ask "New Clunk: Beaverlogger" \
@@ -108,15 +108,17 @@ node "$HOME/.agent-manager/agentctl.js" feedback ask "New Clunk: Beaverlogger" \
   --question "Anything else?"
 ```
 
-- **Questions**, in the order given: `--question` (free text), `--choice "<question>|<option>|<option>*"` (pick one; `*` marks the one you recommend, which starts picked), `--multi` (pick any), `--rating "<question>|<low end>|<high end>"` (1 to 5). With none, the person gets one free-text box.
-- **Files**: `--image` (PNG, JPEG, WebP, GIF up to 8 MB), `--video` (MP4, WebM), `--audio` (MP3, WAV, OGG, M4A), each up to 25 MB, as many as 12. `--screen` captures the screen on macOS and Linux.
-- **Pictures as options** (an A/B pick) and anything more: write the form as JSON and pass `--form form.json`. It's a list of questions, each `{"type": "text" | "choice" | "rating", "prompt", "options": [{"label", "detail", "media": "gold.png"}], "recommended", "multiple", "max" (2 to 10), "low", "high", "media": ["clip.mp4"]}`. Files the form names are attached for you.
-- **Follow-ups**: `--follows <id>` makes the request the next round of an earlier one. The earlier one shows "Follow-up questions" and links to it.
+- **Questions**, in the order given: `--question` (free text), `--choice "<question>|<option>|<option>*"` (pick one; `*` marks the one you recommend, which starts picked), `--multi` (pick any), `--rating "<question>|<low end>|<high end>"` (1 to 5; add a fourth part, such as `|Didn't see it`, to let them say they couldn't judge it). With none, the person gets one free-text box. They can add a note under any question, and attach their own pictures, clips or sounds.
+- **Files**: `--image` (PNG, JPEG, WebP, GIF up to 8 MB), `--video` (MP4, WebM), `--audio` (MP3, WAV, OGG, M4A), each up to 25 MB, as many as 12. `--caption "<file>=<text>"` puts a caption under one. `--screen` captures the screen on macOS and Linux. If a file doesn't attach, agentctl says so and exits with 7: fix it and ask again with `--supersedes <id>`.
+- **Pictures as options** (an A/B pick) and anything more: write the form as JSON and pass `--form form.json`. It's a list of questions, each `{"type": "text" | "choice" | "rating", "prompt", "options": [{"label", "detail", "media": "gold.png"}], "recommended": "<an option's label>", "multiple", "max" (2 to 10), "low", "high", "notApplicable": "Didn't see it", "media": ["clip.mp4"]}`. Ids are optional (filled in as q1, q2… and 1, 2…). Anywhere a file goes, `{"file": "gold.png", "caption": "Gold teeth, from the front"}` adds a caption. Every file the form names is attached for you, relative to the form; if one isn't there, nothing is sent.
+- **Groups**: `--group v0.20.0` tags the request (a release, say), so the person can filter by it. For a release with several items, ask once per item with the same group.
+- **Follow-ups and replacements**: `--follows <id>` makes the request the next round of an earlier one (the earlier one shows "Follow-up questions"). `--supersedes <id>` replaces an earlier request, such as one about an older build: the old one is closed, so questions don't pile up.
+- **Scripts**: `--json` on `feedback ask`, `feedback <id>`, `feedback list` and `feedback status` prints JSON (`ask` gives the id; `list` says whether each is answered and viewed).
 
 Then, in this order:
 
 1. **Don't wait.** Carry on with your default. When they answer, the answer is posted into the session if messages are on for this PC; otherwise `agentctl feedback list` shows what's answered.
-2. **Read the answer** with `agentctl feedback <id>`. That tells the person you've seen it (the card shows "Agent viewed").
+2. **Read the answer** with `agentctl feedback <id>`. That tells the person you've seen it (the card shows "Agent viewed"). If they attached files, `--save <folder>` downloads them.
 3. **Keep the status current** as you act on it, so the person can see where their feedback got to:
    - `agentctl feedback status <id> planning` when you start planning the change,
    - `agentctl feedback status <id> implementing` when you start building it,
@@ -187,12 +189,12 @@ curl:
 ```bash
 curl -fsS -X POST "$MANAGER_URL/api/v1/report" \
   -H "X-Agent-Manager-Key: $AGENT_MANAGER_KEY" -H "Content-Type: application/json" \
-  -d '{"agentId":"openclaw/community-web","kind":"openclaw","machine":"claw-host","name":"Community manager (web)","state":"working","activity":"Answering new comments","lostAfterSeconds":300,"instructionsVersion":4}'
+  -d '{"agentId":"openclaw/community-web","kind":"openclaw","machine":"claw-host","name":"Community manager (web)","state":"working","activity":"Answering new comments","lostAfterSeconds":300,"instructionsVersion":5}'
 ```
 
 PowerShell:
 ```powershell
-$body = @{ agentId = 'gma/functions'; kind = 'service'; machine = 'azure'; name = 'Game Master Assistant'; state = 'working'; activity = 'Serving requests'; instructionsVersion = 4 } | ConvertTo-Json
+$body = @{ agentId = 'gma/functions'; kind = 'service'; machine = 'azure'; name = 'Game Master Assistant'; state = 'working'; activity = 'Serving requests'; instructionsVersion = 5 } | ConvertTo-Json
 Invoke-RestMethod -Method Post "$MANAGER_URL/api/v1/report" -Headers @{ "X-Agent-Manager-Key" = $env:AGENT_MANAGER_KEY } -ContentType 'application/json' -Body $body
 ```
 
@@ -211,17 +213,18 @@ def report(manager_url: str, **fields) -> dict:
         return json.load(res)
 
 report("https://agents.example.net", agentId="openclaw/community-game", kind="openclaw", machine="claw-host",
-       state="working", activity="Posted patch notes for 1.4", link="https://example.com/news/1-4", instructionsVersion=4)
+       state="working", activity="Posted patch notes for 1.4", link="https://example.com/news/1-4", instructionsVersion=5)
 ```
 
 The answer includes `agentUrl`, the agent's page in Agent Manager Delux, and `warnings` for anything that was adjusted (for example a field that was too long).
 
 ### Feedback: `POST $MANAGER_URL/api/v1/feedback`
 
-Ask the person for feedback; they answer on the Feedback tab. The body: `agentId`, `title` (the item, up to 200), `body` (Markdown, up to 8,000), `questions` (up to 8, in the `--form` shape under "Asking the person for feedback" above) and `follows` (an earlier request's id). The answer's `stored.id` is the request's id. Then:
+Ask the person for feedback; they answer on the Feedback tab or from an email. The body: `agentId`, `title` (the item, up to 200), `body` (Markdown, up to 8,000), `questions` (up to 8, in the `--form` shape under "Asking the person for feedback" above), `captions` (`{"<file name>": "<caption>"}`), `group`, `follows` or `supersedes` (an earlier request's id), and `expectFiles` (how many files you'll attach next). The answer's `stored.id` is the request's id. Then:
 
 - `POST /api/v1/feedback/media?id=<id>&name=<file name>` with the file as the body and its `Content-Type` attaches a picture, clip or sound. Questions and options refer to files by that name.
-- `GET /api/v1/feedback/item?id=<id>` returns the request with `status` and `response` (`answers` by question id, and a `note`). Reading an answered request marks it viewed.
+- `POST /api/v1/feedback/ready` with `{"id"}` once you've attached everything. Alerts and emails wait until the files you said you'd send are attached, or until this call, so the email has its pictures.
+- `GET /api/v1/feedback/item?id=<id>` returns the request with `status` and `response` (`answers` by question id, `notes` by question id, and a `note`; a rating answered "didn't see it" is `"n/a"`), and `answerMedia`, the files the person attached (download each from `GET /api/v1/feedback/media?id=<id>&media=<media id>`). Reading an answered request marks it viewed.
 - `GET /api/v1/feedback/inbox` lists your requests that aren't closed.
 - `POST /api/v1/feedback/status` with `{"id", "status": "planning" | "implementing" | "closed" | "followup", "note"}` moves it on.
 
