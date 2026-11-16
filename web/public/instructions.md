@@ -1,6 +1,6 @@
 # Agent Manager Delux: how to report in
 
-Instructions version: **6** · Updated: **2026-11-16**
+Instructions version: **7** · Updated: **2026-11-16**
 
 Already set up on this PC? Follow `$MANAGER_URL/update.md` instead: it checks whether you're on the latest and updates if not.
 
@@ -87,6 +87,9 @@ Recommended: add this to the project's or the user's `CLAUDE.md`, so agents name
   work: `feedback status <id> planning`, then `implementing`, then
   `closed --note "<what you did, in their words>"`. If you have more questions, ask them with
   `feedback ask ... --follows <id>` instead.
+- When you ship a release (a tag, a build, a store update), announce it on the Releases tab with
+  its link, change notes and what the person should know about it:
+  `node "$HOME/.agent-manager/agentctl.js" release "<version>" --url <where it is> --notes "<Markdown change notes>" --comment "<what to try first; what's rough>"`
 - Keep everything short and plain. Never include secrets, file contents or command lines.
 ```
 
@@ -126,6 +129,23 @@ Then, in this order:
    - or ask a follow-up with `--follows <id>` if you have more questions.
 
 If they press **Dismiss**, they have no opinion: go ahead with your default, and close it the same way.
+
+### Announcing a release
+
+When you ship a release (a git tag, a GitHub release, a build on a store or a download page),
+announce it on the **Releases** tab, so the person has every release of every game in one place:
+
+```bash
+node "$HOME/.agent-manager/agentctl.js" release "v0.20.0"   --url https://github.com/example/vanworld/releases/tag/v0.20.0 --title "The Winter Update"   --notes-file CHANGELOG-0.20.md   --comment "Try the frozen lake level first. Known rough: snow drops frames on low-end GPUs."   --link "Windows build=https://example.com/vanworld-0.20-win.zip"
+```
+
+- **`--url`** (required) is where the release is: its GitHub release, store page or download.
+- **`--notes`** is the change notes in Markdown (up to 20,000 characters; `-` reads them from stdin), or **`--notes-file <file>`** reads them from a file. Write them for the person, not for a commit log: what's new, what's fixed.
+- **`--comment`** is what you have to say about it: what to try first, what's known to be rough, what's next.
+- **`--link "<label>=<url>"`** adds more links (downloads, store pages), up to 8. **`--title`** names the release.
+- **`--game <name>`** says which game or app it is; it defaults to this session's project.
+- Sending the same game and version again **updates** that release (fixed notes, a new link) instead of adding another.
+- `agentctl release list [--game <name>]` lists the releases sent so far; `--json` on either prints JSON.
 
 ### Updates from Agent Manager Delux
 
@@ -237,6 +257,10 @@ Ask the person for feedback; they answer on the Feedback tab or from an email. T
 - `GET /api/v1/feedback/item?id=<id>` returns the request with `status` and `response` (`answers` by question id, `notes` by question id, and a `note`; a rating answered "didn't see it" is `"n/a"`), and `answerMedia`, the files the person attached (download each from `GET /api/v1/feedback/media?id=<id>&media=<media id>`). Reading an answered request marks it viewed.
 - `GET /api/v1/feedback/inbox` lists your requests that aren't closed.
 - `POST /api/v1/feedback/status` with `{"id", "status": "planning" | "implementing" | "closed" | "followup", "note"}` moves it on.
+
+### Releases: `POST $MANAGER_URL/api/v1/releases`
+
+Announce a release on the Releases tab. The body: `agentId`, `version` (up to 80), `url` (where the release is; http or https), and optionally `title`, `notes` (Markdown change notes, up to 20,000), `comment` (up to 4,000), `links` (up to 8 of `{"label", "url"}`) and `project` (the game; defaults to the agent's project). Sending the same project and version again updates that release; the answer's `updated` says which happened, and `releaseUrl` links to it. `GET /api/v1/releases[?game=<name>][&limit=<n>]` lists releases, newest first.
 
 ### Heartbeat for many agents: `POST $MANAGER_URL/api/v1/heartbeat`
 
