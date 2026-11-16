@@ -20,6 +20,28 @@ export function get<T>(config: Config, path: string, timeoutMs = 15_000): Promis
   return call<T>(config, 'GET', path, undefined, timeoutMs);
 }
 
+/** GETs a file's bytes from the Agent Manager Delux API. */
+export async function getFile(config: Config, path: string, timeoutMs = 120_000): Promise<Buffer> {
+  let res: Response;
+  try {
+    res = await fetch(`${config.url}/api/v1${path}`, { headers: { 'x-agent-manager-key': config.key }, signal: AbortSignal.timeout(timeoutMs) });
+  } catch (e) {
+    const cause = (e as Error).name === 'TimeoutError' ? `no answer within ${timeoutMs} ms` : (e as Error).message;
+    throw new SendError(`Could not reach ${config.url}: ${cause}`);
+  }
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    let error = `HTTP ${res.status}`;
+    try {
+      error = (JSON.parse(text) as ApiError).error ?? error;
+    } catch {
+      // Not JSON.
+    }
+    throw new SendError(error, res.status);
+  }
+  return Buffer.from(await res.arrayBuffer());
+}
+
 /** POSTs a file (its bytes, with its Content-Type) to the Agent Manager Delux API. */
 export function postFile<T>(config: Config, path: string, bytes: Buffer, contentType: string, timeoutMs = 120_000): Promise<T> {
   return call<T>(config, 'POST', path, { bytes, contentType }, timeoutMs);

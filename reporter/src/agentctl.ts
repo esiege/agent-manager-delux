@@ -2,8 +2,8 @@
 // One file, Node built-ins only. See `agentctl help`.
 
 import { execFileSync } from 'node:child_process';
-import { appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { basename, dirname, resolve } from 'node:path';
 import {
   INSTRUCTIONS_UPDATED,
   INSTRUCTIONS_VERSION,
@@ -44,7 +44,7 @@ import { planHook, type HookInput, type PlannedReport } from './hook';
 import { removeAllInboxes, syncInbox } from './inbox';
 import { paths } from './paths';
 import { ancestors, isAlive } from './proc';
-import { get, post, postFile, SendError } from './send';
+import { get, getFile, post, postFile, SendError } from './send';
 import {
   addSubagent,
   listSessions,
@@ -85,8 +85,9 @@ const HELP = `agentctl: reports the Claude Code sessions on this PC to Agent Man
       the summary (Markdown; "-" reads it from stdin) and acceptance checks. Commit first: it
       refuses while there are uncommitted changes, unless --uncommitted.
   agentctl feedback ask "<title>" [--body "<Markdown>"] [--image <file>]... [--video <file>]...
-                  [--audio <file>]... [--screen] [question flags] [--form <file>] [--follows <id>]
-                  [--wait <seconds>]
+                  [--audio <file>]... [--caption "<file>=<text>"]... [--screen] [question flags]
+                  [--form <file>] [--group <tag>] [--follows <id>] [--supersedes <id>]
+                  [--wait <seconds>] [--json]
       Asks the person for feedback on the Feedback tab: one item, named in the title. --body is
       Markdown ("-" reads it from stdin): what's built, what changed, what the question is not
       about, the default you go ahead with if they don't answer. Files: PNG, JPEG, WebP, GIF up to
@@ -95,16 +96,23 @@ const HELP = `agentctl: reports the Claude Code sessions on this PC to Agent Man
         --question "<question>"                    free text
         --choice "<question>|<option>|<option>*"   pick one; * marks the one you recommend
         --multi "<question>|<option>|<option>"     pick any
-        --rating "<question>|<low end>|<high end>" a score from 1 to 5
+        --rating "<question>|<low end>|<high end>[|<didn't see it>]"   1 to 5, and optionally n/a
       --form <file.json> ("-" for stdin) takes the full form instead: a list of questions, each
-      {type: text|choice|rating, prompt, options: [{label, detail, media}], recommended, multiple,
-      max, low, high, media}. Media paths in it are attached for you. --follows <id> makes it a
-      follow-up to an earlier request. --wait waits that many seconds for the answer and prints it.
-  agentctl feedback <id> [--wait <seconds>]
+      {type: text|choice|rating, prompt, options: [{label, detail, media}], recommended (an
+      option's label or id), multiple, max, low, high, notApplicable, media}. Ids are optional.
+      A media entry is a path or {"file": "<path>", "caption": "<text>"}; every file it names is
+      attached for you, and a missing one stops it before anything is sent. --group tags it (a
+      release: "v0.20.0"). --follows <id> makes it the next round of an earlier request;
+      --supersedes <id> replaces one (the old one is closed). --wait waits that many seconds for
+      the answer and prints it. --json prints {id, url, questions, attached, notAttached}.
+      If a file doesn't attach, it says so and exits 7.
+  agentctl feedback <id> [--wait <seconds>] [--save <folder>] [--json]
       Prints the request and the person's answer; reading an answer tells them you've seen it.
+      --save downloads the files they attached to their answer.
   agentctl feedback status <id> planning|implementing|closed|followup [--note "<text>"]
       Tells the person what you're doing with their answer. Close it with a note in their words.
-  agentctl feedback list      Your requests that aren't closed yet, and where each one is.
+  agentctl feedback list [--group <tag>] [--json]
+      Your requests that aren't closed yet, and where each one is (--json: with answered/viewed).
   agentctl blocker ...        The old name for feedback ask (--details, --screenshot still work).
   agentctl perf [--game <name>] [--days <n>] [--limit <n>] [--json]
       Lists the performance sessions games have sent, newest first, one line a session.
@@ -115,7 +123,7 @@ const HELP = `agentctl: reports the Claude Code sessions on this PC to Agent Man
   agentctl daemon             (started by the hooks) Runs the heartbeat.
 
 Exit codes: 0 done, 1 bad usage, 2 not set up, 3 session not found, 4 Agent Manager Delux refused or
-unreachable, 5 uncommitted changes (done), 6 the feedback request is still unanswered after --wait.`;
+unreachable, 5 uncommitted changes (done), 6 the feedback request is still unanswered after --wait, 7 a file didn't attach to a feedback request.`;
 
 class UsageError extends Error {}
 class NotFoundError extends Error {}
@@ -124,7 +132,7 @@ class NotFoundError extends Error {}
 const SWITCHES = new Set(['clear', 'uncommitted', 'allow-messages', 'no-messages', 'json', 'screen']);
 
 /** Flags that can be given more than once; every value is kept in `lists`. */
-const REPEATED = new Set(['check', 'screenshot', 'image', 'video', 'audio', 'question', 'choice', 'multi', 'rating']);
+const REPEATED = new Set(['check', 'screenshot', 'image', 'video', 'audio', 'question', 'choice', 'multi', 'rating', 'caption']);
 
 interface ParsedArgs {
   positional: string[];
@@ -377,6 +385,8 @@ async function doneCommand(positional: string[], flags: Record<string, string>, 
 // ---- feedback ----
 
 class StillOpenError extends Error {}
+/** The request went out, but some files didn't attach. */
+class NotAttachedError extends Error {}
 
 const FEEDBACK_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const WAIT_POLL_MS = 5000;
@@ -394,13 +404,37 @@ function feedbackIdArg(value: string | undefined, usage: string): string {
   return value;
 }
 
+/** Saves the files the person attached to their answer into `dir`, and says where. */
+async function saveAnswerFiles(config: Config, f: FeedbackDetailResponse['feedback'], dir: string): Promise<string[]> {
+  const files = f.answerMedia ?? [];
+  if (files.length === 0) return [];
+  mkdirSync(dir, { recursive: true });
+  const saved: string[] = [];
+  for (const m of files) {
+    const bytes = await getFile(config, `/feedback/media?${new URLSearchParams({ id: f.id, media: m.id })}`);
+    // Never a path from the server: just the name, with a prefix if it's taken.
+    const base = (m.name ?? `${m.id}`).replace(/[\\/:*?"<>|]/g, '_');
+    let path = resolve(dir, base);
+    if (existsSync(path)) path = resolve(dir, `${m.id.slice(0, 8)}-${base}`);
+    writeFileSync(path, bytes);
+    saved.push(path);
+  }
+  return saved;
+}
+
 /** Prints the request, waiting up to `seconds` for an answer first. Throws StillOpenError if there's none. */
-async function showFeedback(config: Config, id: string, seconds: number | null) {
+async function showFeedback(config: Config, id: string, seconds: number | null, flags: Record<string, string> = {}) {
   const deadline = Date.now() + (seconds ?? 0) * 1000;
   for (;;) {
     const { feedback } = await get<FeedbackDetailResponse>(config, `/feedback/item?${new URLSearchParams({ id })}`);
     if (feedback.status !== 'open' || Date.now() + WAIT_POLL_MS > deadline) {
-      console.log(describeFeedback(feedback, AGENTCTL_COMMAND));
+      const saved = flags.save ? await saveAnswerFiles(config, feedback, flags.save) : [];
+      if ('json' in flags) {
+        console.log(JSON.stringify({ ...feedback, answered: feedback.status !== 'open', saved }, null, 2));
+      } else {
+        console.log(describeFeedback(feedback, AGENTCTL_COMMAND));
+        if (saved.length) console.log(`Saved: ${saved.join(', ')}`);
+      }
       if (feedback.status === 'open' && seconds !== null) {
         throw new StillOpenError(`Still unanswered after ${seconds} s. Check again with: agentctl feedback ${id} --wait <seconds>`);
       }
@@ -415,9 +449,21 @@ function readFormFile(path: string): string {
   return readFileSync(path, 'utf8');
 }
 
+/** --caption "<file>=<text>", any number of times. */
+function captionsFrom(values: string[]): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const v of values) {
+    const at = v.indexOf('=');
+    if (at <= 0) throw new UsageError('--caption takes "<file name>=<caption>", such as --caption "gold.png=Gold teeth, from the front"');
+    out[basename(v.slice(0, at).trim().replace(/\\/g, '/'))] = v.slice(at + 1).trim();
+  }
+  return out;
+}
+
 /** `agentctl feedback ask` (and the old `agentctl blocker`): asks, with files and questions. */
 async function askFeedback(args: ParsedArgs, legacy: boolean) {
-  const { positional, flags, ordered } = args;
+  const { positional, flags, ordered, lists } = args;
+  const json = 'json' in flags;
   const wait = waitSeconds(flags);
   const title = positional.join(' ').trim();
   if (!title) {
@@ -426,6 +472,8 @@ async function askFeedback(args: ParsedArgs, legacy: boolean) {
   let body = (flags.body ?? flags.details)?.trim() ?? null;
   if (body === '-') body = (await readStdin()).trim();
 
+  // Read every file before asking, so nothing goes out with a hole in it.
+  const paths = ordered.filter((o) => FILE_FLAGS.includes(o.name)).map((o) => resolve(o.value));
   let questions: Record<string, unknown>[] = ordered
     .filter((o) => (QUESTION_FLAGS as readonly string[]).includes(o.name))
     .map((o) => questionFromFlag(o.name as QuestionFlag, o.value));
@@ -433,45 +481,73 @@ async function askFeedback(args: ParsedArgs, legacy: boolean) {
   if (flags.form) {
     if (questions.length) throw new UsageError('Give the questions with --form or with question flags, not both');
     const text = flags.form === '-' ? await readStdin() : readFormFile(flags.form);
-    const form = readForm(text, flags.form === '-' ? null : flags.form);
+    const form = readForm(text, flags.form === '-' ? null : flags.form, paths.map((p) => basename(p)));
     questions = form.questions;
     formFiles.push(...form.files);
     if (!body && form.body) body = form.body;
   }
-
-  // Read every file before asking, so a bad path doesn't leave a request without its picture.
-  const paths = ordered.filter((o) => FILE_FLAGS.includes(o.name)).map((o) => resolve(o.value));
   const files: FeedbackFile[] = [...new Set([...paths, ...formFiles])].map(readFeedbackFile);
   if ('screen' in flags) files.push(captureScreen());
+  const captions = captionsFrom(lists.caption ?? []);
 
   const s = findCallingSession();
   const config = loadConfig();
   const follows = flags.follows ? feedbackIdArg(flags.follows, '--follows takes the id of the earlier request') : null;
-  const res = await post<FeedbackCreateResponse>(config, '/feedback', { agentId: s.agentId, title, body: body || null, questions, follows });
+  const supersedes = flags.supersedes ? feedbackIdArg(flags.supersedes, '--supersedes takes the id of the request this one replaces') : null;
+  const res = await post<FeedbackCreateResponse>(config, '/feedback', {
+    agentId: s.agentId,
+    title,
+    body: body || null,
+    questions,
+    follows,
+    supersedes,
+    group: flags.group?.trim() || null,
+    captions,
+    expectFiles: files.length,
+  });
   const id = res.stored.id;
   const attached: string[] = [];
   const missed: string[] = [];
   for (const f of files) {
-    try {
-      const path = `/feedback/media?${new URLSearchParams({ id, name: f.name })}`;
-      await postFile<{ stored: FeedbackMedia }>(config, path, f.bytes, f.contentType);
-      attached.push(f.name);
-    } catch (e) {
-      missed.push(`${f.name}: ${(e as Error).message}`);
+    const path = `/feedback/media?${new URLSearchParams({ id, name: f.name })}`;
+    let error: Error | null = null;
+    // One retry: uploads are big, and a blip shouldn't leave a hole.
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        await postFile<{ stored: FeedbackMedia }>(config, path, f.bytes, f.contentType);
+        error = null;
+        break;
+      } catch (e) {
+        error = e as Error;
+      }
     }
+    if (error) missed.push(`${f.name}: ${error.message}`);
+    else attached.push(f.name);
   }
-  console.log(`Feedback requested for ${s.name}: ${res.feedbackUrl}`);
-  console.log(`Id: ${id}`);
-  if (res.stored.questions.length) console.log(`Questions: ${res.stored.questions.map((q) => `${q.id} (${q.type})`).join(', ')}`);
-  if (attached.length) console.log(`Attached: ${attached.join(', ')}`);
-  for (const m of missed) console.log(`Not attached: ${m}`);
-  for (const w of res.warnings) console.log(`Note: ${w}`);
-  if (legacy) console.log('agentctl blocker is now agentctl feedback ask; it works the same.');
+  // Alerts and emails wait for the files; send them now in any case.
+  if (files.length) await post(config, '/feedback/ready', { id }).catch(() => {});
+
+  if (json) {
+    console.log(JSON.stringify({ id, url: res.feedbackUrl, questions: res.stored.questions.map((q) => ({ id: q.id, type: q.type })), attached, notAttached: missed }));
+  } else {
+    console.log(`Feedback requested for ${s.name}: ${res.feedbackUrl}`);
+    console.log(`Id: ${id}`);
+    if (res.stored.questions.length) console.log(`Questions: ${res.stored.questions.map((q) => `${q.id} (${q.type})`).join(', ')}`);
+    if (attached.length) console.log(`Attached: ${attached.join(', ')}`);
+    for (const m of missed) console.log(`Not attached: ${m}`);
+    for (const w of res.warnings) console.log(`Note: ${w}`);
+    if (legacy) console.log('agentctl blocker is now agentctl feedback ask; it works the same.');
+  }
+  if (missed.length) {
+    throw new NotAttachedError(
+      `${missed.length} file(s) didn't attach, so the request is missing them. Ask again with --supersedes ${id} once they're fixed.`,
+    );
+  }
   if (wait === null) {
-    console.log(`Don't wait on it: carry on with your default. Read the answer with: agentctl feedback ${id} (add --wait <seconds> to wait)`);
+    if (!json) console.log(`Don't wait on it: carry on with your default. Read the answer with: agentctl feedback ${id} (add --wait <seconds> to wait)`);
     return;
   }
-  await showFeedback(config, id, wait);
+  await showFeedback(config, id, wait, flags);
 }
 
 /** `agentctl feedback status <id> <status> [--note]`: says what the agent is doing with the answer. */
@@ -482,6 +558,10 @@ async function feedbackStatusCommand(positional: string[], flags: Record<string,
   if (!status || !(FEEDBACK_AGENT_STATUSES as readonly string[]).includes(status)) throw new UsageError(usage);
   const note = [flags.note, ...positional.slice(2)].filter(Boolean).join(' ').trim() || null;
   const res = await post<{ stored: FeedbackDetailResponse['feedback'] }>(loadConfig(), '/feedback/status', { id, status, note });
+  if ('json' in flags) {
+    console.log(JSON.stringify({ id, status: res.stored.status }));
+    return;
+  }
   console.log(`"${res.stored.title}" is now: ${FEEDBACK_STATUS_LABEL[res.stored.status]}.`);
   if (status === 'followup' && !res.stored.followedBy) {
     console.log(`Ask the follow-up questions with: agentctl feedback ask "<title>" --follows ${id} ...`);
@@ -489,20 +569,41 @@ async function feedbackStatusCommand(positional: string[], flags: Record<string,
 }
 
 /** `agentctl feedback list`: this PC's requests that aren't closed, and what each needs next. */
-async function feedbackListCommand() {
+async function feedbackListCommand(flags: Record<string, string>) {
   const { feedback } = await get<FeedbackInboxResponse>(loadConfig(), '/feedback/inbox');
-  if (feedback.length === 0) {
+  const mine = flags.group ? feedback.filter((f) => f.group === flags.group) : feedback;
+  if ('json' in flags) {
+    console.log(
+      JSON.stringify(
+        mine.map((f) => ({
+          id: f.id,
+          title: f.title,
+          project: f.project,
+          group: f.group ?? null,
+          status: f.status,
+          answered: f.status !== 'open',
+          viewed: f.history.some((h) => h.status === 'viewed'),
+          updatedAt: f.updatedAt,
+        })),
+        null,
+        2,
+      ),
+    );
+    return;
+  }
+  if (mine.length === 0) {
     console.log('No feedback requests in progress from this PC.');
     return;
   }
-  for (const f of feedback) {
+  for (const f of mine) {
     const next =
       f.status === 'open'
         ? 'waiting on the person'
         : f.status === 'sent' || f.status === 'dismissed'
           ? `answered: read it with agentctl feedback ${f.id}`
           : `update it with agentctl feedback status ${f.id} <status>`;
-    console.log(`${f.id}  ${FEEDBACK_STATUS_LABEL[f.status].padEnd(18)}  ${f.project ?? f.agentName}: ${f.title}  (${next})`);
+    const group = f.group ? ` [${f.group}]` : '';
+    console.log(`${f.id}  ${FEEDBACK_STATUS_LABEL[f.status].padEnd(18)}  ${f.project ?? f.agentName}${group}: ${f.title}  (${next})`);
   }
 }
 
@@ -510,15 +611,17 @@ async function feedbackCommand(args: ParsedArgs) {
   const [sub, ...rest] = args.positional;
   if (sub === 'ask') return askFeedback({ ...args, positional: rest }, false);
   if (sub === 'status') return feedbackStatusCommand(rest, args.flags);
-  if (sub === 'list') return feedbackListCommand();
-  if (sub && FEEDBACK_ID.test(sub) && rest.length === 0) return showFeedback(loadConfig(), sub, waitSeconds(args.flags));
-  throw new UsageError('Usage: agentctl feedback ask "<title>" ... | feedback <id> [--wait <seconds>] | feedback status <id> <status> | feedback list');
+  if (sub === 'list') return feedbackListCommand(args.flags);
+  if (sub && FEEDBACK_ID.test(sub) && rest.length === 0) return showFeedback(loadConfig(), sub, waitSeconds(args.flags), args.flags);
+  throw new UsageError('Usage: agentctl feedback ask "<title>" ... | feedback <id> [--wait <seconds>] [--save <folder>] | feedback status <id> <status> | feedback list');
 }
 
 /** `agentctl blocker`: the old name. "<text>" asks; "<id>" reads. */
 async function blockerCommand(args: ParsedArgs) {
   const [first] = args.positional;
-  if (args.positional.length === 1 && first && FEEDBACK_ID.test(first)) return showFeedback(loadConfig(), first, waitSeconds(args.flags));
+  if (args.positional.length === 1 && first && FEEDBACK_ID.test(first)) {
+    return showFeedback(loadConfig(), first, waitSeconds(args.flags), args.flags);
+  }
   return askFeedback(args, true);
 }
 
@@ -789,6 +892,7 @@ async function main(argv: string[]): Promise<number> {
     if (e instanceof SendError) return 4;
     if (e instanceof UncommittedError) return 5;
     if (e instanceof StillOpenError) return 6;
+    if (e instanceof NotAttachedError) return 7;
     if (e instanceof FeedbackFileError) return 1;
     return 1;
   }

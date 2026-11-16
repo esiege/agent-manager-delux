@@ -13,6 +13,7 @@ import {
   type ApiError,
   type Feedback,
   type FeedbackListResponse,
+  type FeedbackMedia,
   type RespondFeedbackInput,
   type CreateKeyResponse,
   type HideAgentsResponse,
@@ -60,21 +61,27 @@ interface RequestOptions {
   signal?: AbortSignal;
 }
 
-async function request<T>(path: string, { method = 'GET', body, signal }: RequestOptions = {}): Promise<T> {
+interface RawFile {
+  bytes: Blob;
+  contentType: string;
+}
+
+async function request<T>(path: string, { method = 'GET', body, signal }: RequestOptions = {}, file?: RawFile): Promise<T> {
   let res: Response;
   try {
     res = await fetch(API_BASE + path, {
-      method,
+      method: file ? 'POST' : method,
       signal,
       credentials: 'same-origin',
       // A redirect here means the sign-in expired and the site is sending us to the login page.
       redirect: 'manual',
       // Every change carries OWNER_WRITE_HEADER, which the API requires so other sites can't post here.
-      headers:
-        method === 'GET'
+      headers: file
+        ? { Accept: 'application/json', 'Content-Type': file.contentType, [OWNER_WRITE_HEADER]: '1' }
+        : method === 'GET'
           ? { Accept: 'application/json' }
           : { Accept: 'application/json', 'Content-Type': 'application/json', [OWNER_WRITE_HEADER]: '1' },
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: file ? file.bytes : body === undefined ? undefined : JSON.stringify(body),
     });
   } catch (e) {
     if (signal?.aborted) throw e;
@@ -129,6 +136,15 @@ export const api = {
   feedback: (signal?: AbortSignal) => request<FeedbackListResponse>('/feedback', { signal }),
   respondFeedback: (input: RespondFeedbackInput) =>
     request<{ feedback: Feedback }>('/feedback/respond', { method: 'POST', body: input }),
+  /** Attaches a file to your answer, while the request is open. */
+  addAnswerMedia: (feedbackId: string, file: File, contentType: string) =>
+    request<{ stored: FeedbackMedia }>(
+      `/feedback/answer-media?${new URLSearchParams({ id: feedbackId, name: file.name }).toString()}`,
+      {},
+      { bytes: file, contentType },
+    ),
+  removeAnswerMedia: (feedbackId: string, mediaId: string) =>
+    request<{ feedback: Feedback }>('/feedback/answer-media/remove', { method: 'POST', body: { id: feedbackId, media: mediaId } }),
 };
 
 /** A request's picture, clip or sound, for <img>, <video> or <audio> (same origin, so the sign-in cookie goes along). */

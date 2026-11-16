@@ -1,7 +1,9 @@
 // Settings > Alerts: phone alerts, through ntfy, when an agent finishes, needs the owner, fails or is cut off.
+// Email subscriptions (for feedback requests) are on the Feedback tab, so they're left out here.
 
 import { ALERT_EVENTS, LIMITS, type AlertEvent, type AlertSubscription } from '@agent-manager-delux/shared';
 import {
+  Anchor,
   Badge,
   Button,
   Checkbox,
@@ -18,6 +20,7 @@ import {
 import { useMediaQuery } from '@mantine/hooks';
 import { IconBell, IconPlus, IconRefresh, IconSend } from '@tabler/icons-react';
 import { useMemo, useState, type FormEvent } from 'react';
+import { Link } from 'react-router';
 import { useAgentsFeed } from '../hooks/useAgentsFeed';
 import { api } from '../lib/api';
 import { notifyError, notifySuccess } from '../lib/notify';
@@ -314,7 +317,7 @@ export function AlertsSettings() {
   const { data, error, refresh } = usePolling('alerts', loadAlerts, { intervalMs: null });
   const [editing, setEditing] = useState<Draft | null>(null);
   const [deleting, setDeleting] = useState<AlertSubscription | null>(null);
-  const subs = data?.subscriptions ?? NO_SUBSCRIPTIONS;
+  const subs = useMemo(() => (data?.subscriptions ?? NO_SUBSCRIPTIONS).filter((s) => s.channel !== 'email'), [data]);
 
   return (
     <Stack gap="sm" mt="xl" component="section" aria-labelledby="alerts-title">
@@ -329,7 +332,12 @@ export function AlertsSettings() {
       <Text size="sm" c="dimmed">
         Alerts go to your phone through ntfy, which is free: install the ntfy app (Android/iOS), then subscribe to the topic
         below. They arrive like texts when an agent finishes a request, needs you, fails, or is cut off mid-request. Anyone
-        who knows a topic can read it, so topics here are long and random; keep them to yourself.
+        who knows a topic can read it, so topics here are long and random; keep them to yourself. To get feedback requests by
+        email instead, add your address at the bottom of the{' '}
+        <Anchor component={Link} to="/feedback" size="sm">
+          Feedback
+        </Anchor>{' '}
+        tab.
       </Text>
 
       {!data ? (

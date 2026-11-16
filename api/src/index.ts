@@ -14,8 +14,16 @@ import { hideAgents } from './handlers/hide';
 import { reporting } from './handlers/reporting';
 import { perfSamples, perfSession, perfSessionDetail, perfSessions } from './handlers/perf';
 import {
+  addAnswerMedia,
   addFeedbackMedia,
   createFeedback,
+  feedbackReady,
+  linkAddAnswerMedia,
+  linkFeedback,
+  linkMedia,
+  linkRemoveAnswerMedia,
+  linkRespond,
+  removeAnswerMedia,
   feedbackInbox,
   feedbackItem,
   feedbackList,
@@ -88,6 +96,15 @@ register('feedbackInbox', 'GET', 'v1/feedback/inbox', feedbackInbox);
 register('feedbackMedia', 'GET', 'v1/feedback/media', feedbackMedia);
 register('feedbackStatus', 'POST', 'v1/feedback/status', feedbackStatus);
 register('respondFeedback', 'POST', 'v1/feedback/respond', respondFeedback);
+register('feedbackReady', 'POST', 'v1/feedback/ready', feedbackReady);
+register('addAnswerMedia', 'POST', 'v1/feedback/answer-media', addAnswerMedia);
+register('removeAnswerMedia', 'POST', 'v1/feedback/answer-media/remove', removeAnswerMedia);
+// From the page a feedback email links to: the signed link is the only key.
+register('linkFeedback', 'GET', 'v1/feedback/link', linkFeedback);
+register('linkMedia', 'GET', 'v1/feedback/link/media', linkMedia);
+register('linkRespond', 'POST', 'v1/feedback/link/respond', linkRespond);
+register('linkAddAnswerMedia', 'POST', 'v1/feedback/link/answer-media', linkAddAnswerMedia);
+register('linkRemoveAnswerMedia', 'POST', 'v1/feedback/link/answer-media/remove', linkRemoveAnswerMedia);
 // What agentctl versions from before feedback call.
 register('createBlocker', 'POST', 'v1/blockers', createFeedback);
 register('addBlockerMedia', 'POST', 'v1/blockers/media', addFeedbackMedia);

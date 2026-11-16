@@ -494,6 +494,13 @@ function readAlertTarget(raw: string): string {
   return url.toString();
 }
 
+/** An email address, lower-cased. Only the shape is checked; a test email shows it arrives. */
+function readEmailTarget(raw: string): string {
+  const address = raw.trim().toLowerCase();
+  if (!/^[^\s@<>(),;:"]+@[^\s@<>(),;:"]+\.[a-z]{2,}$/.test(address)) throw new Invalid('target must be an email address, such as you@example.com');
+  return address;
+}
+
 function readStrings(raw: unknown, field: string): string[] {
   if (!Array.isArray(raw) || raw.some((v) => typeof v !== 'string')) throw new Invalid(`${field} must be an array of strings`);
   return [...new Set((raw as string[]).map((v) => v.trim()).filter(Boolean))];
@@ -504,7 +511,8 @@ export function validateAlertSubscription(body: unknown): Result<AlertSubscripti
     const id = r.optionalString('id', LIMITS.idLength);
     const name = r.requiredString('name', LIMITS.nameLength);
     const channel = r.oneOf<AlertChannel>('channel', ALERT_CHANNELS, false) ?? 'ntfy';
-    const target = readAlertTarget(r.requiredString('target', LIMITS.linkLength));
+    const rawTarget = r.requiredString('target', LIMITS.linkLength);
+    const target = channel === 'email' ? readEmailTarget(rawTarget) : readAlertTarget(rawTarget);
 
     const events = readStrings(r.array('events'), 'events');
     if (events.length === 0) throw new Invalid(`events must hold at least one of ${ALERT_EVENTS.join(', ')}`);

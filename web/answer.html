@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="description" content="Answer an agent's feedback request." />
+    <meta name="robots" content="noindex" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>Feedback · Agent Manager Delux</title>
+    <script>
+      // Light / dark and the saved color theme, applied before the first paint. The numbers are
+      // the ones src/lib/siteTheme.ts last saved; with none saved, styles.css's Gold shows.
+      (function () {
+        try {
+          var root = document.documentElement;
+          var mode = localStorage.getItem('mantine-color-scheme-value');
+          if (mode !== 'light' && mode !== 'dark') mode = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+          root.setAttribute('data-mantine-color-scheme', mode);
+          var names = ['--hs', '--ss', '--ha', '--sa', '--brand-h', '--brand-s', '--brand2-h', '--brand2-s'];
+          var saved = JSON.parse(localStorage.getItem('am:themeVars') || 'null');
+          if (Array.isArray(saved) && saved.length === names.length) {
+            for (var i = 0; i < names.length; i++) {
+              if (typeof saved[i] === 'number' && isFinite(saved[i])) root.style.setProperty(names[i], String(saved[i]));
+            }
+          }
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/answer/main.tsx"></script>
+  </body>
+</html>

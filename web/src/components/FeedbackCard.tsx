@@ -1,6 +1,10 @@
 // Feedback cards. FeedbackCard is a request waiting on you: who asks, what they show (pictures,
-// clips, sounds), their questions and a quick form to answer them. FeedbackProgressCard is one
-// you've answered: your answer and how far the agent has got with it. Loaded on demand: it brings
+// clips, sounds, with captions), their questions, and a quick form to answer them, with a note under
+// any question and files of your own. FeedbackProgressCard is one you've answered: your answer and
+// how far the agent has got with it.
+//
+// The cards don't call the API themselves: the Feedback tab wires them to the signed-in API, and
+// the answer page an email links to wires them to that link's API. Loaded on demand: it brings
 // Markdown.
 
 import {
@@ -18,8 +22,11 @@ import {
   Anchor,
   Badge,
   Button,
+  CloseButton,
+  FileButton,
   Group,
   Image,
+  Loader,
   Modal,
   Paper,
   SimpleGrid,
@@ -36,17 +43,24 @@ import {
   IconCheck,
   IconDeviceDesktop,
   IconHash,
+  IconMail,
   IconMessageCircle,
   IconMessageCircleOff,
+  IconMusic,
+  IconPaperclip,
+  IconReplace,
   IconSend,
+  IconTag,
+  IconVideo,
   IconX,
 } from '@tabler/icons-react';
-import { useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import Markdown from 'react-markdown';
 import { Link } from 'react-router';
 import remarkGfm from 'remark-gfm';
-import { feedbackMediaUrl } from '../lib/api';
 import { agentPath, STATE_COLOR, STATE_LABEL } from '../lib/labels';
+import { MEDIA_ACCEPT, whyNotAttach } from '../lib/media';
+import { notifyError } from '../lib/notify';
 import { formatAbsolute } from '../lib/time';
 import { FeedbackProgress } from './FeedbackProgress';
 import { RelativeTime } from './Time';
@@ -54,6 +68,12 @@ import { RelativeTime } from './Time';
 /** A body longer than this starts folded. */
 const FOLD_CHARS = 400;
 const FOLD_LINES = 6;
+
+/** Where a file's bytes are: the signed-in API on the Feedback tab, a signed link on the answer page. */
+export type MediaUrl = (mediaId: string) => string;
+
+/** Finds another request (the one this follows or replaces) when it's on the page. */
+export type FindRequest = (id: string) => Feedback | undefined;
 
 /** The last part of an agent id, which tells sessions of the same agent apart. */
 function instanceId(agentId: string): string {
@@ -81,55 +101,70 @@ function mediaIndex(f: Feedback) {
   return { byName, loose, pick };
 }
 
-function Clip({ feedbackId, m }: { feedbackId: string; m: FeedbackMedia }) {
-  const src = feedbackMediaUrl(feedbackId, m.id);
+function Caption({ text }: { text: string | undefined }) {
+  if (!text) return null;
+  return (
+    <Text size="xs" c="dimmed" style={{ overflowWrap: 'anywhere' }}>
+      {text}
+    </Text>
+  );
+}
+
+function Clip({ m, mediaUrl, caption }: { m: FeedbackMedia; mediaUrl: MediaUrl; caption?: string }) {
+  const src = mediaUrl(m.id);
   if (m.kind === 'video') {
-    return <video className="am-feedback-video" src={src} controls preload="metadata" playsInline aria-label={m.name ?? 'Video'} />;
+    return (
+      <Stack gap={2}>
+        <video className="am-feedback-video" src={src} controls preload="metadata" playsInline aria-label={caption ?? m.name ?? 'Video'} />
+        <Caption text={caption} />
+      </Stack>
+    );
   }
   return (
     <Stack gap={2}>
-      {m.name && (
-        <Text size="xs" c="dimmed">
-          {m.name}
-        </Text>
-      )}
-      <audio className="am-feedback-audio" src={src} controls preload="metadata" aria-label={m.name ?? 'Sound'} />
+      <Text size="xs" c="dimmed" style={{ overflowWrap: 'anywhere' }}>
+        {caption ?? m.name}
+      </Text>
+      <audio className="am-feedback-audio" src={src} controls preload="metadata" aria-label={caption ?? m.name ?? 'Sound'} />
     </Stack>
   );
 }
 
-function MediaStrip({ feedbackId, items }: { feedbackId: string; items: FeedbackMedia[] }) {
+function MediaStrip({ items, mediaUrl, captions }: { items: FeedbackMedia[]; mediaUrl: MediaUrl; captions: Record<string, string> }) {
   const [open, setOpen] = useState<FeedbackMedia | null>(null);
   if (items.length === 0) return null;
   const images = items.filter((m) => m.kind === 'image');
   const clips = items.filter((m) => m.kind !== 'image');
-  // One picture shows large; several show as a row of thumbnails.
+  const caption = (m: FeedbackMedia) => (m.name ? captions[m.name] : undefined);
+  // One picture shows large; several show as a row of thumbnails, each with its caption.
   const single = images.length === 1;
   return (
     <Stack gap="xs">
       {clips.map((m) => (
-        <Clip key={m.id} feedbackId={feedbackId} m={m} />
+        <Clip key={m.id} m={m} mediaUrl={mediaUrl} caption={caption(m)} />
       ))}
       {images.length > 0 && (
-        <Group gap="xs" wrap="wrap">
+        <Group gap="xs" wrap="wrap" align="flex-start">
           {images.map((m) => (
-            <UnstyledButton
-              key={m.id}
-              onClick={() => setOpen(m)}
-              className="am-feedback-thumb"
-              data-single={single || undefined}
-              aria-label={`Open ${m.name ?? 'picture'} full size`}
-            >
-              <Image src={feedbackMediaUrl(feedbackId, m.id)} alt={m.name ?? 'Picture'} loading="lazy" fit="contain" h="100%" />
-            </UnstyledButton>
+            <Stack key={m.id} gap={2} className="am-feedback-figure" data-single={single || undefined}>
+              <UnstyledButton
+                onClick={() => setOpen(m)}
+                className="am-feedback-thumb"
+                data-single={single || undefined}
+                aria-label={`Open ${caption(m) ?? m.name ?? 'picture'} full size`}
+              >
+                <Image src={mediaUrl(m.id)} alt={caption(m) ?? m.name ?? 'Picture'} loading="lazy" fit="contain" h="100%" />
+              </UnstyledButton>
+              <Caption text={caption(m)} />
+            </Stack>
           ))}
         </Group>
       )}
-      <Modal opened={open !== null} onClose={() => setOpen(null)} size="auto" title={open?.name ?? 'Picture'} centered>
+      <Modal opened={open !== null} onClose={() => setOpen(null)} size="auto" title={open ? (caption(open) ?? open.name ?? 'Picture') : ''} centered>
         {open && (
           <Stack gap="xs" align="center">
-            <img className="am-feedback-full" src={feedbackMediaUrl(feedbackId, open.id)} alt={open.name ?? 'Picture'} />
-            <Anchor href={feedbackMediaUrl(feedbackId, open.id)} target="_blank" rel="noopener noreferrer" size="sm">
+            <img className="am-feedback-full" src={mediaUrl(open.id)} alt={caption(open) ?? open.name ?? 'Picture'} />
+            <Anchor href={mediaUrl(open.id)} target="_blank" rel="noopener noreferrer" size="sm">
               Open in a new tab
             </Anchor>
           </Stack>
@@ -160,15 +195,21 @@ function Body({ text }: { text: string }) {
 
 // ---- The header both cards share ----
 
-function CardHeader({ feedback, agent }: { feedback: Feedback; agent: FeedbackAgentInfo | undefined }) {
+function CardHeader({ feedback, agent, linkAgent }: { feedback: Feedback; agent: FeedbackAgentInfo | undefined; linkAgent: boolean }) {
   const who = feedback.project || feedback.agentName;
   return (
     <Group justify="space-between" align="flex-start" wrap="nowrap" gap="xs">
       <Stack gap={2} miw={0}>
         <Group gap="xs" wrap="nowrap" miw={0}>
-          <Anchor component={Link} to={agentPath(feedback.agentId)} fw={600} truncate="end">
-            {who}
-          </Anchor>
+          {linkAgent ? (
+            <Anchor component={Link} to={agentPath(feedback.agentId)} fw={600} truncate="end">
+              {who}
+            </Anchor>
+          ) : (
+            <Text fw={600} truncate="end">
+              {who}
+            </Text>
+          )}
           {agent && (
             <Badge size="sm" variant="light" color={STATE_COLOR[agent.state]} tt="none" style={{ flexShrink: 0 }}>
               {STATE_LABEL[agent.state]}
@@ -176,6 +217,11 @@ function CardHeader({ feedback, agent }: { feedback: Feedback; agent: FeedbackAg
           )}
         </Group>
         <Group gap="sm" wrap="wrap">
+          {feedback.group && (
+            <Badge size="sm" variant="outline" color="gray" tt="none" leftSection={<IconTag size={11} aria-hidden />}>
+              {feedback.group}
+            </Badge>
+          )}
           <Tooltip label={feedback.agentId}>
             <Group gap={4} wrap="nowrap" miw={0}>
               <IconHash size={13} color="var(--mantine-color-dimmed)" aria-hidden />
@@ -203,17 +249,15 @@ function CardHeader({ feedback, agent }: { feedback: Feedback; agent: FeedbackAg
   );
 }
 
-/** "Follows up on: <earlier title>", which scrolls to the earlier request when it's on the page. */
-function FollowsLine({ feedback, parent }: { feedback: Feedback; parent: Feedback | undefined }) {
-  if (!feedback.follows) return null;
+function LinkLine({ icon, label, other }: { icon: ReactNode; label: string; other: Feedback | undefined }) {
   return (
     <Group gap={4} wrap="nowrap" miw={0}>
-      <IconArrowBackUp size={14} color="var(--mantine-color-dimmed)" aria-hidden />
+      {icon}
       <Text size="xs" c="dimmed" truncate="end">
-        Follows up on:{' '}
-        {parent ? (
-          <Anchor component="button" type="button" size="xs" onClick={() => scrollToFeedback(parent.id)}>
-            {parent.title}
+        {label}{' '}
+        {other ? (
+          <Anchor component="button" type="button" size="xs" onClick={() => scrollToFeedback(other.id)}>
+            {other.title}
           </Anchor>
         ) : (
           'an earlier request'
@@ -223,22 +267,93 @@ function FollowsLine({ feedback, parent }: { feedback: Feedback; parent: Feedbac
   );
 }
 
+/** "Follows up on: …" and "Replaces: …", which scroll to the earlier request when it's on the page. */
+function Links({ feedback, findRequest }: { feedback: Feedback; findRequest: FindRequest }) {
+  return (
+    <>
+      {feedback.follows && (
+        <LinkLine
+          icon={<IconArrowBackUp size={14} color="var(--mantine-color-dimmed)" aria-hidden />}
+          label="Follows up on:"
+          other={findRequest(feedback.follows)}
+        />
+      )}
+      {feedback.supersedes && (
+        <LinkLine
+          icon={<IconReplace size={14} color="var(--mantine-color-dimmed)" aria-hidden />}
+          label="Replaces:"
+          other={findRequest(feedback.supersedes)}
+        />
+      )}
+    </>
+  );
+}
+
 // ---- Answers ----
 
 type Answers = Record<string, FeedbackAnswerValue>;
+type Notes = Record<string, string>;
 
-/** One answer as words: the option labels, "4 of 5", or the text. */
+/** One answer as words: the option labels, "4 of 5", "Didn't see it", or the text. */
 export function answerText(q: FeedbackQuestion, value: FeedbackAnswerValue | undefined): string | null {
   if (value === undefined) return null;
   if (q.type === 'text') return String(value);
-  if (q.type === 'rating') return `${value} of ${q.max}`;
+  if (q.type === 'rating') return value === 'n/a' ? (q.notApplicable ?? 'n/a') : `${value} of ${q.max}`;
   const ids = Array.isArray(value) ? value : [String(value)];
   return ids.map((id) => q.options.find((o) => o.id === id)?.label ?? id).join(', ');
 }
 
-/** Your answer, question by question. */
-export function AnswerSummary({ feedback, lines }: { feedback: Feedback; lines?: number }) {
+/** Files attached to the answer: thumbnails for pictures, a named chip for clips and sounds. */
+function AttachmentList({
+  items,
+  mediaUrl,
+  previews,
+  onRemove,
+  removing,
+}: {
+  items: FeedbackMedia[];
+  mediaUrl: MediaUrl;
+  /** Local previews of files just uploaded, by media id, for pages without a signed address yet. */
+  previews?: Record<string, string>;
+  onRemove?: (m: FeedbackMedia) => void;
+  removing?: string | null;
+}) {
+  if (items.length === 0) return null;
+  return (
+    <Group gap="xs" wrap="wrap">
+      {items.map((m) => {
+        const src = previews?.[m.id] ?? mediaUrl(m.id);
+        return (
+          <div key={m.id} className="am-feedback-attachment">
+            {m.kind === 'image' ? (
+              <a href={src} target="_blank" rel="noopener noreferrer" aria-label={`Open ${m.name ?? 'picture'}`}>
+                <img src={src} alt={m.name ?? 'Picture'} loading="lazy" />
+              </a>
+            ) : (
+              <a href={src} target="_blank" rel="noopener noreferrer" className="am-feedback-attachment-clip">
+                {m.kind === 'video' ? <IconVideo size={16} aria-hidden /> : <IconMusic size={16} aria-hidden />}
+              </a>
+            )}
+            <Text size="xs" truncate="end" maw={120} title={m.name ?? undefined}>
+              {m.name ?? m.kind}
+            </Text>
+            {onRemove &&
+              (removing === m.id ? (
+                <Loader size={12} />
+              ) : (
+                <CloseButton size="xs" aria-label={`Remove ${m.name ?? 'file'}`} onClick={() => onRemove(m)} />
+              ))}
+          </div>
+        );
+      })}
+    </Group>
+  );
+}
+
+/** Your answer, question by question, with your notes and files. */
+export function AnswerSummary({ feedback, lines, mediaUrl }: { feedback: Feedback; lines?: number; mediaUrl?: MediaUrl }) {
   const r = feedback.response;
+  const files = feedback.answerMedia ?? [];
   if (!r) {
     return feedback.history.some((s) => s.status === 'dismissed') ? (
       <Text size="sm" c="dimmed">
@@ -246,37 +361,83 @@ export function AnswerSummary({ feedback, lines }: { feedback: Feedback; lines?:
       </Text>
     ) : null;
   }
-  const answered = feedback.questions.filter((q) => r.answers[q.id] !== undefined);
+  const shown = feedback.questions.filter((q) => r.answers[q.id] !== undefined || r.notes?.[q.id]);
   return (
     <Stack gap={4}>
-      {answered.map((q) => (
-        <Text key={q.id} size="sm" lineClamp={lines} style={{ overflowWrap: 'anywhere' }}>
-          <Text span c="dimmed" size="sm">
-            {q.prompt}{' '}
-          </Text>
-          <Text span fw={500} size="sm" style={{ whiteSpace: 'pre-wrap' }}>
-            {answerText(q, r.answers[q.id])}
-          </Text>
-        </Text>
-      ))}
+      {shown.map((q) => {
+        const text = answerText(q, r.answers[q.id]);
+        const note = r.notes?.[q.id];
+        return (
+          <div key={q.id}>
+            <Text size="sm" lineClamp={lines} style={{ overflowWrap: 'anywhere' }}>
+              <Text span c="dimmed" size="sm">
+                {q.prompt}{' '}
+              </Text>
+              {text && (
+                <Text span fw={500} size="sm" style={{ whiteSpace: 'pre-wrap' }}>
+                  {text}
+                </Text>
+              )}
+            </Text>
+            {note && (
+              <Text size="xs" c="dimmed" lineClamp={lines} style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
+                Note: {note}
+              </Text>
+            )}
+          </div>
+        );
+      })}
       {r.note && (
         <Text size="sm" lineClamp={lines} style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
           {r.note}
         </Text>
       )}
-      {answered.length === 0 && !r.note && (
+      {mediaUrl && <AttachmentList items={files} mediaUrl={mediaUrl} />}
+      {!mediaUrl && files.length > 0 && (
+        <Text size="xs" c="dimmed">
+          {files.length === 1 ? '1 file attached' : `${files.length} files attached`}
+        </Text>
+      )}
+      {shown.length === 0 && !r.note && files.length === 0 && (
         <Text size="sm" c="dimmed">
           Sent without a note: good as it is.
         </Text>
+      )}
+      {r.via === 'email' && (
+        <Group gap={4} wrap="nowrap">
+          <IconMail size={12} color="var(--mantine-color-dimmed)" aria-hidden />
+          <Text size="xs" c="dimmed" style={{ overflowWrap: 'anywhere' }}>
+            Answered by email ({r.by})
+          </Text>
+        </Group>
       )}
     </Stack>
   );
 }
 
-function initialAnswers(questions: FeedbackQuestion[]): Answers {
+/** A value from an email link (?q=&a=) as an answer to that question, or null when it doesn't fit. */
+function preselected(q: FeedbackQuestion, value: string): FeedbackAnswerValue | null {
+  if (q.type === 'choice') {
+    if (!q.options.some((o) => o.id === value)) return null;
+    return q.multiple ? [value] : value;
+  }
+  if (q.type === 'rating') {
+    if (value === 'n/a') return q.notApplicable ? 'n/a' : null;
+    const n = Number(value);
+    return Number.isInteger(n) && n >= 1 && n <= q.max ? n : null;
+  }
+  return null;
+}
+
+function initialAnswers(questions: FeedbackQuestion[], preselect: Preselect | undefined): Answers {
   const out: Answers = {};
   for (const q of questions) {
     if (q.type === 'choice' && q.recommended) out[q.id] = q.multiple ? [q.recommended] : q.recommended;
+  }
+  const q = preselect && questions.find((x) => x.id === preselect.questionId);
+  if (q && preselect) {
+    const v = preselected(q, preselect.value);
+    if (v !== null) out[q.id] = v;
   }
   return out;
 }
@@ -297,17 +458,19 @@ function QuestionPrompt({ children }: { children: ReactNode }) {
 }
 
 function ChoiceField({
-  feedbackId,
   q,
   value,
   media,
+  mediaUrl,
+  captions,
   disabled,
   onChange,
 }: {
-  feedbackId: string;
   q: FeedbackChoiceQuestion;
   value: FeedbackAnswerValue | undefined;
   media: Map<string, FeedbackMedia>;
+  mediaUrl: MediaUrl;
+  captions: Record<string, string>;
   disabled: boolean;
   onChange: (v: FeedbackAnswerValue | undefined) => void;
 }) {
@@ -326,11 +489,12 @@ function ChoiceField({
   };
   const options = q.options.map((o) => {
     const m = o.media ? media.get(o.media) : undefined;
+    const caption = o.media ? captions[o.media] : undefined;
     const checked = picked.has(o.id);
     return (
       <Stack key={o.id} gap={4}>
         {/* Videos and sounds have their own controls, so they sit above the option, not inside it. */}
-        {m && m.kind !== 'image' && <Clip feedbackId={feedbackId} m={m} />}
+        {m && m.kind !== 'image' && <Clip m={m} mediaUrl={mediaUrl} caption={caption} />}
         <button
           type="button"
           className="am-feedback-option"
@@ -340,8 +504,11 @@ function ChoiceField({
           disabled={disabled}
           onClick={() => toggle(o.id)}
         >
-          {m && m.kind === 'image' && (
-            <img className="am-feedback-option-media" src={feedbackMediaUrl(feedbackId, m.id)} alt={o.label} loading="lazy" />
+          {m && m.kind === 'image' && <img className="am-feedback-option-media" src={mediaUrl(m.id)} alt={caption ?? o.label} loading="lazy" />}
+          {m && m.kind === 'image' && caption && (
+            <Text size="xs" c="dimmed" mb={4} style={{ overflowWrap: 'anywhere' }}>
+              {caption}
+            </Text>
           )}
           <Group gap="xs" wrap="nowrap" justify="space-between" align="flex-start">
             <Group gap={6} wrap="nowrap" miw={0} align="flex-start">
@@ -402,35 +569,77 @@ function RatingField({
 }) {
   const scores = Array.from({ length: q.max }, (_, i) => i + 1);
   return (
-    <Stack gap={2} role="radiogroup" aria-label={q.prompt} style={{ alignSelf: 'flex-start' }}>
-      <Group gap={4} wrap="wrap">
-        {scores.map((n) => (
-          <Button
-            key={n}
-            size="xs"
-            px={10}
-            miw={34}
-            variant={value === n ? 'filled' : 'default'}
-            role="radio"
-            aria-checked={value === n}
-            disabled={disabled}
-            onClick={() => onChange(value === n ? undefined : n)}
-          >
-            {n}
-          </Button>
-        ))}
-      </Group>
-      {(q.low || q.high) && (
-        <Group justify="space-between" gap="md" wrap="nowrap">
-          <Text size="xs" c="dimmed">
-            {q.low ?? ''}
-          </Text>
-          <Text size="xs" c="dimmed" ta="right">
-            {q.high ?? ''}
-          </Text>
+    <Group gap="xs" wrap="wrap" align="flex-start">
+      <Stack gap={2} role="radiogroup" aria-label={q.prompt}>
+        <Group gap={4} wrap="wrap">
+          {scores.map((n) => (
+            <Button
+              key={n}
+              size="xs"
+              px={10}
+              miw={34}
+              variant={value === n ? 'filled' : 'default'}
+              role="radio"
+              aria-checked={value === n}
+              disabled={disabled}
+              onClick={() => onChange(value === n ? undefined : n)}
+            >
+              {n}
+            </Button>
+          ))}
+          {q.notApplicable && (
+            <Button
+              size="xs"
+              variant={value === 'n/a' ? 'filled' : 'default'}
+              color={value === 'n/a' ? 'gray' : undefined}
+              role="radio"
+              aria-checked={value === 'n/a'}
+              disabled={disabled}
+              onClick={() => onChange(value === 'n/a' ? undefined : 'n/a')}
+            >
+              {q.notApplicable}
+            </Button>
+          )}
         </Group>
-      )}
-    </Stack>
+        {(q.low || q.high) && (
+          <Group justify="space-between" gap="md" wrap="nowrap" maw={q.max * 38}>
+            <Text size="xs" c="dimmed">
+              {q.low ?? ''}
+            </Text>
+            <Text size="xs" c="dimmed" ta="right">
+              {q.high ?? ''}
+            </Text>
+          </Group>
+        )}
+      </Stack>
+    </Group>
+  );
+}
+
+/** "Add a note" under a question: a link that opens a short box. */
+function QuestionNote({ prompt, value, disabled, onChange }: { prompt: string; value: string; disabled: boolean; onChange: (v: string) => void }) {
+  const [open, setOpen] = useState(value !== '');
+  if (!open) {
+    return (
+      <Anchor component="button" type="button" size="xs" c="dimmed" onClick={() => setOpen(true)} style={{ alignSelf: 'flex-start' }} disabled={disabled}>
+        + Add a note
+      </Anchor>
+    );
+  }
+  return (
+    <Textarea
+      aria-label={`A note on: ${prompt}`}
+      placeholder="A note on this question"
+      autosize
+      minRows={1}
+      maxRows={6}
+      size="xs"
+      maxLength={LIMITS.feedbackQuestionNoteLength}
+      value={value}
+      disabled={disabled}
+      autoFocus={value === ''}
+      onChange={(e) => onChange(e.currentTarget.value)}
+    />
   );
 }
 
@@ -463,22 +672,68 @@ function DeliveryHint({ status }: { status: FeedbackAgentInfo | undefined }) {
 
 export type FeedbackAction = 'send' | 'dismiss';
 
-interface FeedbackCardProps {
-  feedback: Feedback;
-  /** The request this one follows, when it's on the page. */
-  parent: Feedback | undefined;
-  agent: FeedbackAgentInfo | undefined;
-  highlighted: boolean;
-  onAnswer: (feedback: Feedback, action: FeedbackAction, answers: Answers, note: string) => Promise<boolean>;
+export interface FeedbackAnswer {
+  answers: Answers;
+  notes: Notes;
+  note: string;
 }
 
-export function FeedbackCard({ feedback, parent, agent, highlighted, onAnswer }: FeedbackCardProps) {
-  const [answers, setAnswers] = useState<Answers>(() => initialAnswers(feedback.questions));
+/** A pick carried in from an email link: ?q=<question id>&a=<option id, score or n/a>. */
+export interface Preselect {
+  questionId: string;
+  value: string;
+}
+
+export interface FeedbackCardProps {
+  feedback: Feedback;
+  findRequest: FindRequest;
+  /** How the agent is now; the answer page doesn't know, and leaves it out. */
+  agent?: FeedbackAgentInfo;
+  /** Whether to say how the answer reaches the session (the Feedback tab knows; the answer page doesn't). */
+  showDelivery?: boolean;
+  highlighted?: boolean;
+  /** Link the agent's name to its page (signed in only). */
+  linkAgent?: boolean;
+  mediaUrl: MediaUrl;
+  uploadAnswerMedia: (file: File) => Promise<FeedbackMedia>;
+  removeAnswerMedia: (mediaId: string) => Promise<void>;
+  onAnswer: (action: FeedbackAction, answer: FeedbackAnswer) => Promise<boolean>;
+  preselect?: Preselect;
+}
+
+export function FeedbackCard({
+  feedback,
+  findRequest,
+  agent,
+  showDelivery = true,
+  highlighted = false,
+  linkAgent = true,
+  mediaUrl,
+  uploadAnswerMedia,
+  removeAnswerMedia,
+  onAnswer,
+  preselect,
+}: FeedbackCardProps) {
+  const [answers, setAnswers] = useState<Answers>(() => initialAnswers(feedback.questions, preselect));
+  const [notes, setNotes] = useState<Notes>({});
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState<FeedbackAction | null>(null);
+  const [attached, setAttached] = useState<FeedbackMedia[]>(() => feedback.answerMedia ?? []);
+  const [previews, setPreviews] = useState<Record<string, string>>({});
+  const [uploading, setUploading] = useState<string[]>([]);
+  const [removing, setRemoving] = useState<string | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const previewsRef = useRef(previews);
+  previewsRef.current = previews;
   const { byName, loose, pick } = mediaIndex(feedback);
+  const captions = feedback.captions ?? {};
   const noQuestions = feedback.questions.length === 0;
-  const canSend = note.trim() !== '' || Object.values(answers).some(hasValue);
+  const anyNote = Object.values(notes).some((n) => n.trim() !== '');
+  const canSend = note.trim() !== '' || anyNote || attached.length > 0 || Object.values(answers).some(hasValue);
+  const working = busy !== null || uploading.length > 0;
+
+  // Local previews are object URLs: let them go with the card.
+  useEffect(() => () => Object.values(previewsRef.current).forEach((u) => URL.revokeObjectURL(u)), []);
 
   function set(id: string, v: FeedbackAnswerValue | undefined) {
     setAnswers((a) => {
@@ -489,12 +744,57 @@ export function FeedbackCard({ feedback, parent, agent, highlighted, onAnswer }:
     });
   }
 
+  async function attach(files: File[]) {
+    for (const file of files) {
+      const why = whyNotAttach(file);
+      if (why) {
+        notifyError(new Error(why), "Can't attach that file");
+        continue;
+      }
+      if (attached.length + uploading.length >= LIMITS.feedbackAnswerMedia) {
+        notifyError(new Error(`An answer holds at most ${LIMITS.feedbackAnswerMedia} files`), "Can't attach more files");
+        return;
+      }
+      setUploading((u) => [...u, file.name]);
+      try {
+        const stored = await uploadAnswerMedia(file);
+        setAttached((a) => [...a, stored]);
+        if (stored.kind === 'image') setPreviews((p) => ({ ...p, [stored.id]: URL.createObjectURL(file) }));
+      } catch (e) {
+        notifyError(e, `Couldn't attach ${file.name}`);
+      } finally {
+        setUploading((u) => {
+          const i = u.indexOf(file.name);
+          return i < 0 ? u : [...u.slice(0, i), ...u.slice(i + 1)];
+        });
+      }
+    }
+  }
+
+  async function remove(m: FeedbackMedia) {
+    setRemoving(m.id);
+    try {
+      await removeAnswerMedia(m.id);
+      setAttached((a) => a.filter((x) => x.id !== m.id));
+    } catch (e) {
+      notifyError(e, `Couldn't remove ${m.name ?? 'the file'}`);
+    } finally {
+      setRemoving(null);
+    }
+  }
+
   async function answer(action: FeedbackAction) {
-    if (busy || (action === 'send' && !canSend)) return;
+    if (working || (action === 'send' && !canSend)) return;
     setBusy(action);
     const clean: Answers = {};
     for (const [id, v] of Object.entries(answers)) if (hasValue(v)) clean[id] = typeof v === 'string' ? v.trim() : v;
-    const done = await onAnswer(feedback, action, action === 'send' ? clean : {}, note.trim());
+    const cleanNotes: Notes = {};
+    for (const [id, n] of Object.entries(notes)) if (n.trim()) cleanNotes[id] = n.trim();
+    const done = await onAnswer(action, {
+      answers: action === 'send' ? clean : {},
+      notes: action === 'send' ? cleanNotes : {},
+      note: note.trim(),
+    });
     if (!done) setBusy(null);
   }
 
@@ -506,8 +806,29 @@ export function FeedbackCard({ feedback, parent, agent, highlighted, onAnswer }:
       id={`feedback-${feedback.id}`}
       className="am-feedback"
       data-highlighted={highlighted || undefined}
+      data-dragging={dragging || undefined}
       component="article"
       aria-label={`Feedback: ${feedback.title}`}
+      onDragOver={(e) => {
+        if (busy || !e.dataTransfer.types.includes('Files')) return;
+        e.preventDefault();
+        setDragging(true);
+      }}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragging(false);
+      }}
+      onDrop={(e) => {
+        if (!e.dataTransfer.files.length) return;
+        e.preventDefault();
+        setDragging(false);
+        void attach([...e.dataTransfer.files]);
+      }}
+      onPaste={(e) => {
+        const files = [...e.clipboardData.files];
+        if (files.length === 0 || busy) return;
+        e.preventDefault();
+        void attach(files);
+      }}
     >
       <Stack
         gap="sm"
@@ -518,20 +839,20 @@ export function FeedbackCard({ feedback, parent, agent, highlighted, onAnswer }:
           }
         }}
       >
-        <CardHeader feedback={feedback} agent={agent} />
-        <FollowsLine feedback={feedback} parent={parent} />
+        <CardHeader feedback={feedback} agent={agent} linkAgent={linkAgent} />
+        <Links feedback={feedback} findRequest={findRequest} />
 
         <Title order={2} size="h4" style={{ overflowWrap: 'anywhere' }}>
           {feedback.title}
         </Title>
 
-        <MediaStrip feedbackId={feedback.id} items={loose} />
+        <MediaStrip items={loose} mediaUrl={mediaUrl} captions={captions} />
         {feedback.body && <Body text={feedback.body} />}
 
         {feedback.questions.map((q) => (
           <Stack key={q.id} gap={6}>
             <QuestionPrompt>{q.prompt}</QuestionPrompt>
-            <MediaStrip feedbackId={feedback.id} items={pick(q.media)} />
+            <MediaStrip items={pick(q.media)} mediaUrl={mediaUrl} captions={captions} />
             {q.type === 'text' && (
               <Textarea
                 aria-label={q.prompt}
@@ -547,15 +868,25 @@ export function FeedbackCard({ feedback, parent, agent, highlighted, onAnswer }:
             )}
             {q.type === 'choice' && (
               <ChoiceField
-                feedbackId={feedback.id}
                 q={q}
                 value={answers[q.id]}
                 media={byName}
+                mediaUrl={mediaUrl}
+                captions={captions}
                 disabled={busy !== null}
                 onChange={(v) => set(q.id, v)}
               />
             )}
             {q.type === 'rating' && <RatingField q={q} value={answers[q.id]} disabled={busy !== null} onChange={(v) => set(q.id, v)} />}
+            {/* A text question is its own note. */}
+            {q.type !== 'text' && (
+              <QuestionNote
+                prompt={q.prompt}
+                value={notes[q.id] ?? ''}
+                disabled={busy !== null}
+                onChange={(v) => setNotes((n) => ({ ...n, [q.id]: v }))}
+              />
+            )}
           </Stack>
         ))}
 
@@ -573,8 +904,30 @@ export function FeedbackCard({ feedback, parent, agent, highlighted, onAnswer }:
             disabled={busy !== null}
             onChange={(e) => setNote(e.currentTarget.value)}
           />
+
+          <AttachmentList items={attached} mediaUrl={mediaUrl} previews={previews} onRemove={busy ? undefined : (m) => void remove(m)} removing={removing} />
+          {uploading.length > 0 && (
+            <Group gap={6} wrap="nowrap">
+              <Loader size={12} />
+              <Text size="xs" c="dimmed" truncate="end">
+                Attaching {uploading.join(', ')}…
+              </Text>
+            </Group>
+          )}
+
           <Group justify="space-between" wrap="wrap" gap="xs">
-            <DeliveryHint status={agent} />
+            <Group gap="xs" wrap="wrap">
+              <FileButton onChange={(files) => void attach(files)} accept={MEDIA_ACCEPT} multiple disabled={busy !== null}>
+                {(props) => (
+                  <Tooltip label="Pictures, clips or sounds of your own. You can also paste or drop them on the card.">
+                    <Button {...props} variant="subtle" color="gray" size="compact-xs" leftSection={<IconPaperclip size={14} />}>
+                      Attach files
+                    </Button>
+                  </Tooltip>
+                )}
+              </FileButton>
+              {showDelivery && <DeliveryHint status={agent} />}
+            </Group>
             <Group gap="xs" wrap="nowrap" ml="auto">
               <Tooltip label="No opinion: the agent goes ahead with its default">
                 <Button
@@ -582,7 +935,7 @@ export function FeedbackCard({ feedback, parent, agent, highlighted, onAnswer }:
                   size="xs"
                   leftSection={<IconX size={14} />}
                   loading={busy === 'dismiss'}
-                  disabled={busy === 'send'}
+                  disabled={busy === 'send' || uploading.length > 0}
                   onClick={() => void answer('dismiss')}
                 >
                   Dismiss
@@ -592,7 +945,7 @@ export function FeedbackCard({ feedback, parent, agent, highlighted, onAnswer }:
                 size="xs"
                 leftSection={<IconSend size={14} />}
                 loading={busy === 'send'}
-                disabled={busy === 'dismiss' || !canSend}
+                disabled={busy === 'dismiss' || !canSend || uploading.length > 0}
                 onClick={() => void answer('send')}
               >
                 Send
@@ -620,15 +973,16 @@ function deliveryLine(f: Feedback, message: AgentMessage | undefined, now: strin
 
 interface FeedbackProgressCardProps {
   feedback: Feedback;
-  parent: Feedback | undefined;
+  findRequest: FindRequest;
   agent: FeedbackAgentInfo | undefined;
   message: AgentMessage | undefined;
   now: string;
   highlighted: boolean;
+  mediaUrl: MediaUrl;
   onClose: (feedback: Feedback) => Promise<boolean>;
 }
 
-export function FeedbackProgressCard({ feedback, parent, agent, message, now, highlighted, onClose }: FeedbackProgressCardProps) {
+export function FeedbackProgressCard({ feedback, findRequest, agent, message, now, highlighted, mediaUrl, onClose }: FeedbackProgressCardProps) {
   const [busy, setBusy] = useState(false);
   const delivery = feedback.status === 'sent' || feedback.status === 'dismissed' ? deliveryLine(feedback, message, now) : null;
 
@@ -651,12 +1005,12 @@ export function FeedbackProgressCard({ feedback, parent, agent, message, now, hi
       aria-label={`Feedback: ${feedback.title}`}
     >
       <Stack gap="xs">
-        <CardHeader feedback={feedback} agent={agent} />
-        <FollowsLine feedback={feedback} parent={parent} />
+        <CardHeader feedback={feedback} agent={agent} linkAgent />
+        <Links feedback={feedback} findRequest={findRequest} />
         <Title order={3} size="h5" style={{ overflowWrap: 'anywhere' }}>
           {feedback.title}
         </Title>
-        <AnswerSummary feedback={feedback} lines={4} />
+        <AnswerSummary feedback={feedback} lines={4} mediaUrl={mediaUrl} />
         <FeedbackProgress feedback={feedback} />
         <Group justify="space-between" wrap="wrap" gap="xs">
           {delivery?.text ? (
@@ -672,6 +1026,36 @@ export function FeedbackProgressCard({ feedback, parent, agent, message, now, hi
             </Button>
           </Tooltip>
         </Group>
+      </Stack>
+    </Paper>
+  );
+}
+
+/**
+ * A request read-only, for the answer page once it's answered: what was asked, your answer and how
+ * far the agent has got.
+ */
+export function FeedbackReadOnlyCard({ feedback, mediaUrl, findRequest }: { feedback: Feedback; mediaUrl: MediaUrl; findRequest: FindRequest }) {
+  const { loose } = mediaIndex(feedback);
+  return (
+    <Paper withBorder p="md" radius="md" className="am-feedback" data-stage="progress" component="article" aria-label={`Feedback: ${feedback.title}`}>
+      <Stack gap="sm">
+        <CardHeader feedback={feedback} agent={undefined} linkAgent={false} />
+        <Links feedback={feedback} findRequest={findRequest} />
+        <Title order={2} size="h4" style={{ overflowWrap: 'anywhere' }}>
+          {feedback.title}
+        </Title>
+        <MediaStrip items={loose} mediaUrl={mediaUrl} captions={feedback.captions ?? {}} />
+        {feedback.body && <Body text={feedback.body} />}
+        {(feedback.response || feedback.status !== 'open') && (
+          <Stack gap={4}>
+            <Text size="sm" fw={600}>
+              The answer
+            </Text>
+            <AnswerSummary feedback={feedback} mediaUrl={mediaUrl} />
+          </Stack>
+        )}
+        <FeedbackProgress feedback={feedback} />
       </Stack>
     </Paper>
   );

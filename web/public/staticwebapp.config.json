@@ -23,11 +23,15 @@
     { "route": "/api/*", "allowedRoles": ["anonymous"] },
     { "route": "/.auth/login/aad", "statusCode": 404 },
     { "route": "/.auth/login/twitter", "statusCode": 404 },
+    { "route": "/answer", "rewrite": "/answer.html", "allowedRoles": ["anonymous"] },
+    { "route": "/answer.html", "allowedRoles": ["anonymous"] },
+    { "route": "/assets/*", "allowedRoles": ["anonymous"] },
+    { "route": "/favicon.svg", "allowedRoles": ["anonymous"] },
     { "route": "/*", "allowedRoles": ["authenticated"] }
   ],
   "navigationFallback": {
     "rewrite": "/index.html",
-    "exclude": ["/api/*", "/instructions.md", "/update.md", "/performance.md", "/agentctl.js", "/assets/*", "/.auth/*", "/favicon.svg"]
+    "exclude": ["/api/*", "/instructions.md", "/update.md", "/performance.md", "/agentctl.js", "/answer.html", "/assets/*", "/.auth/*", "/favicon.svg"]
   },
   "responseOverrides": {
     "401": { "redirect": "/.auth/login/github?post_login_redirect_uri=.referrer", "statusCode": 302 }

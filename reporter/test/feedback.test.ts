@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { describeFeedback, readFeedbackQuestions, type Feedback } from '@agent-manager-delux/shared';
+import { describeFeedback, readFeedbackForm, readFeedbackQuestions, type Feedback } from '@agent-manager-delux/shared';
 import { FeedbackFileError, questionFromFlag, readFeedbackFile, readForm } from '../src/feedback';
 
 let dir: string;
@@ -56,6 +56,7 @@ describe('questions from flags', () => {
       high: 'Terrifying',
     });
     expect(questionFromFlag('choice', 'A or B?|A \\| one|B')).toMatchObject({ options: [{ label: 'A | one' }, { label: 'B' }] });
+    expect(questionFromFlag('rating', "Roar?|Quiet|Loud|Didn't hear it")).toMatchObject({ notApplicable: "Didn't hear it" });
   });
 
   it('needs two options for a choice', () => {
@@ -68,19 +69,30 @@ describe('questions from flags', () => {
 });
 
 describe('readForm', () => {
-  it('attaches the files a form names, keeping just their names', () => {
+  it('attaches the files a form names, keeping just their names and captions', () => {
     writeFileSync(join(dir, 'gold.png'), Buffer.from([1]));
+    writeFileSync(join(dir, 'clip.mp4'), Buffer.from([1]));
     const form = readForm(
       JSON.stringify({
         body: 'Built with ivory teeth.',
-        questions: [{ type: 'choice', prompt: 'Teeth?', options: [{ label: 'Ivory' }, { label: 'Gold', media: 'gold.png' }] }, { prompt: 'x', media: ['missing.png'] }],
+        questions: [
+          { type: 'choice', prompt: 'Teeth?', options: [{ label: 'Ivory' }, { label: 'Gold', media: 'gold.png' }] },
+          { prompt: 'x', media: [{ file: 'clip.mp4', caption: 'The roar' }, 'shot.png'] },
+        ],
       }),
       join(dir, 'form.json'),
+      ['shot.png'],
     );
     expect(form.body).toBe('Built with ivory teeth.');
-    expect(form.files).toEqual([join(dir, 'gold.png')]);
+    expect(form.files.sort()).toEqual([join(dir, 'clip.mp4'), join(dir, 'gold.png')]);
     expect((form.questions[0]!.options as { media?: string }[])[1]!.media).toBe('gold.png');
-    expect(form.questions[1]!.media).toEqual(['missing.png']);
+    expect(form.questions[1]!.media).toEqual([{ file: 'clip.mp4', caption: 'The roar' }, 'shot.png']);
+    expect(readFeedbackForm(form.questions).captions).toEqual({ 'clip.mp4': 'The roar' });
+  });
+
+  it('stops before sending when the form names a file that is not there', () => {
+    const text = JSON.stringify([{ prompt: 'x', media: 'missing.png' }]);
+    expect(() => readForm(text, join(dir, 'form.json'))).toThrow(/a file that isn't there: missing.png.*Nothing was sent/);
   });
 
   it('takes a bare list and refuses what is not a form', () => {

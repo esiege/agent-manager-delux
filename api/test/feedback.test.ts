@@ -164,7 +164,7 @@ describe('asking for feedback', () => {
   it('refuses questions it cannot show, saying which', async () => {
     const bad = async (questions: unknown) => ((await ask({ questions })).body as { error: string }).error;
     expect(await bad([{ type: 'choice', prompt: 'Pick', options: ['Only one'] }])).toBe('questions[0].options must hold 2 to 8 options');
-    expect(await bad([{ type: 'choice', prompt: 'Pick', options: ['a', 'b'], recommended: 'c' }])).toMatch(/recommended must be one of/);
+    expect(await bad([{ type: 'choice', prompt: 'Pick', options: ['a', 'b'], recommended: 'c' }])).toMatch(/recommended must be an option's label or id/);
     expect(await bad([{ type: 'rating', prompt: 'Score', max: 50 }])).toBe('questions[0].max must be a whole number from 2 to 10');
     expect(await bad([{ type: 'slider', prompt: 'x' }])).toBe('questions[0].type must be text, choice or rating');
     expect(await bad([{ prompt: 'a', id: 'x' }, { prompt: 'b', id: 'x' }])).toBe('questions[1].id "x" is used twice');
@@ -282,7 +282,7 @@ describe('answering', () => {
     expect(((await respond(id, { answers: { q1: 'silver' } })).body as { error: string }).error).toBe('answers.q1 must be one of 1, gold');
     expect(((await respond(id, { answers: { q2: 9 } })).body as { error: string }).error).toBe('answers.q2 must be a whole number from 1 to 5');
     expect(((await respond(id, { answers: { q9: 'x' } })).body as { error: string }).error).toMatch(/no question with that id/);
-    expect(((await respond(id, { note: null })).body as { error: string }).error).toBe('Answer a question or write a note, or dismiss it');
+    expect(((await respond(id, { note: null })).body as { error: string }).error).toBe('Answer a question, write a note or attach a file, or dismiss it');
   });
 
   it('keeps the answer for the agent to check when the session cannot take messages', async () => {

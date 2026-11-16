@@ -1,5 +1,6 @@
-// Alerts (Settings > Alerts): tells subscriptions when an agent finishes, needs the owner,
-// fails, or is cut off mid-request. ntfy is the only channel so far; others go in CHANNELS.
+// Alerts: tells subscriptions when an agent finishes, needs the owner, fails, is cut off
+// mid-request, or asks for feedback. Through ntfy (Settings > Alerts) or email (the Feedback tab);
+// a feedback email carries the whole request with one-click answers (feedbackEmail.ts).
 
 import {
   effectiveState,
@@ -10,7 +11,10 @@ import {
   type AlertSubscription,
   type Feedback,
 } from '@agent-manager-delux/shared';
+import { esc, getMailer } from './email';
+import { feedbackEmail } from './feedbackEmail';
 import type { Ctx } from './http';
+import { signLink } from './links';
 
 export interface AlertMessage {
   event: AlertEvent | 'test';
@@ -18,6 +22,20 @@ export interface AlertMessage {
   body: string;
   /** The agent's page, opened when the alert is tapped. */
   click: string | null;
+  /** For the email channel: the whole email, when it's more than the title and body. */
+  email?: { to: string; subject: string; html: string; text: string };
+}
+
+/** A plain email for an alert that isn't a feedback request. */
+function alertEmail(to: string, msg: AlertMessage) {
+  const link = msg.click ? `<p><a href="${esc(msg.click)}">Open in Agent Manager Delux</a></p>` : '';
+  return {
+    to,
+    subject: msg.title,
+    html: `<!doctype html><html><body style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:15px;color:#222">
+<h2 style="font-size:18px;margin:0 0 10px">${esc(msg.title)}</h2><p style="white-space:pre-wrap">${esc(msg.body)}</p>${link}</body></html>`,
+    text: `${msg.title}\n\n${msg.body}${msg.click ? `\n\n${msg.click}` : ''}`,
+  };
 }
 
 const SEND_TIMEOUT_MS = 3000;
@@ -131,7 +149,16 @@ async function sendNtfy(target: string, msg: AlertMessage): Promise<void> {
   if (!res.ok) throw new Error(`ntfy answered ${res.status} ${res.statusText}`.trim());
 }
 
-const CHANNELS: Record<AlertChannel, (target: string, msg: AlertMessage) => Promise<void>> = { ntfy: sendNtfy };
+async function sendEmail(ctx: Ctx, target: string, msg: AlertMessage): Promise<void> {
+  const mailer = getMailer(ctx.env);
+  if (!mailer) throw new Error("Email isn't set up on this Agent Manager Delux (no EMAIL_ENDPOINT): deploy with infra to add it");
+  await mailer.send(msg.email ?? alertEmail(target, msg));
+}
+
+const CHANNELS: Record<AlertChannel, (ctx: Ctx, target: string, msg: AlertMessage) => Promise<void>> = {
+  ntfy: (_ctx, target, msg) => sendNtfy(target, msg),
+  email: sendEmail,
+};
 
 /** One line saying why a send failed, without the target (the topic is the secret). */
 function describe(e: unknown, target: string): string {
@@ -147,7 +174,7 @@ function describe(e: unknown, target: string): string {
 export async function deliver(ctx: Ctx, sub: AlertSubscription, msg: AlertMessage): Promise<string | null> {
   let error: string | null = null;
   try {
-    await CHANNELS[sub.channel](sub.target, msg);
+    await CHANNELS[sub.channel](ctx, sub.target, msg);
   } catch (e) {
     error = describe(e, sub.target);
   }
@@ -198,7 +225,23 @@ export function feedbackPage(origin: string, feedbackId: string): string {
   return `${origin}/feedback?${new URLSearchParams({ id: feedbackId }).toString()}`;
 }
 
-/** Tells subscriptions about a new feedback request (the "blocker" event). Never throws. */
+/** The answer page an email links to, with an optional preselection. */
+export function answerPage(origin: string, token: string, q?: string, a?: string): string {
+  const params = new URLSearchParams({ t: token });
+  if (q) params.set('q', q);
+  if (q && a) params.set('a', a);
+  return `${origin}/answer?${params.toString()}`;
+}
+
+/** A request's file, signed for the email that shows it. */
+export function linkMediaUrl(origin: string, token: string, mediaId: string): string {
+  return `${origin}/api/v1/feedback/link/media?${new URLSearchParams({ t: token, media: mediaId }).toString()}`;
+}
+
+/**
+ * Tells subscriptions about a new feedback request (the "blocker" event): ntfy gets a line, email
+ * gets the whole request with one-click answers signed for that subscription. Never throws.
+ */
 export async function notifyFeedback(ctx: Ctx, feedback: Feedback, origin: string): Promise<void> {
   try {
     const subs = (await ctx.store.listAlerts()).filter((s) => wants(s, feedback, 'blocker'));
@@ -210,7 +253,25 @@ export async function notifyFeedback(ctx: Ctx, feedback: Feedback, origin: strin
 On ${feedback.machine}`), BODY_LENGTH),
       click: feedbackPage(origin, feedback.id),
     };
-    await Promise.allSettled(subs.map((s) => deliver(ctx, s, msg)));
+    const earlierId = feedback.supersedes ?? feedback.follows;
+    const earlier = earlierId ? await ctx.store.getFeedback(earlierId) : null;
+    await Promise.allSettled(
+      subs.map((s) => {
+        if (s.channel !== 'email') return deliver(ctx, s, msg);
+        const token = signLink(ctx.env, feedback.id, s.id, ctx.now());
+        const email = feedbackEmail(
+          feedback,
+          s.target,
+          {
+            answer: (q, a) => answerPage(origin, token, q, a),
+            media: (id) => linkMediaUrl(origin, token, id),
+            tab: feedbackPage(origin, feedback.id),
+          },
+          earlier?.title ?? null,
+        );
+        return deliver(ctx, s, { ...msg, email });
+      }),
+    );
   } catch (e) {
     console.error(`Feedback alert failed for ${feedback.id}: ${(e as Error).message}`);
   }

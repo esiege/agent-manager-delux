@@ -1,24 +1,33 @@
 // Feedback: what agents want your view on. Requests waiting on you are panels you answer in place;
 // ones you've answered show how far the agent has got (viewed, planning, implementing); finished
-// ones from the last week are listed underneath.
+// ones from the last week are listed underneath. Requests can be filtered by group (a release, say),
+// and at the bottom you choose which email addresses get each new request.
 
 import {
   FEEDBACK_DONE_STATUSES,
   FEEDBACK_RECENT_DAYS,
   FEEDBACK_STATUS_LABEL,
   type Feedback,
-  type FeedbackAnswerValue,
   type FeedbackListResponse,
 } from '@agent-manager-delux/shared';
-import { Anchor, Badge, Group, Paper, SimpleGrid, Stack, Text, Title, Tooltip } from '@mantine/core';
-import { useEffect, useState } from 'react';
+import { Anchor, Badge, Chip, Group, Paper, SimpleGrid, Stack, Text, Title, Tooltip } from '@mantine/core';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
-import { AnswerSummary, FeedbackCard, FeedbackProgressCard, scrollToFeedback, type FeedbackAction } from '../components/FeedbackCard';
+import { EmailSubscriptions } from '../components/EmailSubscriptions';
+import {
+  AnswerSummary,
+  FeedbackCard,
+  FeedbackProgressCard,
+  scrollToFeedback,
+  type FeedbackAction,
+  type FeedbackAnswer,
+} from '../components/FeedbackCard';
 import { FEEDBACK_STATUS_COLOR } from '../components/FeedbackProgress';
 import { PageHeader } from '../components/PageHeader';
 import { EmptyState, LoadError, TableSkeleton } from '../components/States';
 import { RelativeTime, UpdatedAgo } from '../components/Time';
-import { api } from '../lib/api';
+import { api, feedbackMediaUrl } from '../lib/api';
+import { mediaTypeOf } from '../lib/media';
 import { agentPath, plural } from '../lib/labels';
 import { notifyError } from '../lib/notify';
 import { usePolling } from '../lib/usePolling';
@@ -28,6 +37,9 @@ const POLL_MS = 5000;
 const loadFeedback = (signal: AbortSignal) => api.feedback(signal);
 
 const isDone = (f: Feedback) => FEEDBACK_DONE_STATUSES.includes(f.status);
+
+/** The "All" chip of the group filter. */
+const ALL = '';
 
 function DoneRow({ f }: { f: Feedback }) {
   const last = f.history[f.history.length - 1];
@@ -40,6 +52,11 @@ function DoneRow({ f }: { f: Feedback }) {
         <Text size="sm" fw={500} style={{ overflowWrap: 'anywhere' }}>
           {f.title}
         </Text>
+        {f.group && (
+          <Badge size="xs" variant="outline" color="gray" tt="none" style={{ flexShrink: 0 }}>
+            {f.group}
+          </Badge>
+        )}
       </Group>
       <Text size="xs" c="dimmed" component="div">
         <Anchor component={Link} to={agentPath(f.agentId)} size="xs">
@@ -55,11 +72,11 @@ function DoneRow({ f }: { f: Feedback }) {
       )}
       {f.followedBy && (
         <Anchor component="button" type="button" size="xs" onClick={() => scrollToFeedback(f.followedBy!)} style={{ alignSelf: 'flex-start' }}>
-          See the follow-up
+          {f.history.some((s) => s.status === 'followup') ? 'See the follow-up' : 'See what replaced it'}
         </Anchor>
       )}
       <Text size="xs" c="dimmed" component="div">
-        <AnswerSummary feedback={f} lines={2} />
+        <AnswerSummary feedback={f} lines={2} mediaUrl={(m) => feedbackMediaUrl(f.id, m)} />
       </Text>
     </Stack>
   );
@@ -89,10 +106,23 @@ export function FeedbackPage() {
   // Answered or closed here but not yet reloaded: hidden so the panel goes as soon as you act.
   const [handled, setHandled] = useState<ReadonlyMap<string, string>>(new Map());
 
-  const all = data?.feedback ?? [];
+  const [group, setGroup] = useState(ALL);
+
+  const everything = data?.feedback;
+  const byId = new Map((everything ?? []).map((f) => [f.id, f]));
+  const groups = useMemo(
+    () => [...new Set((everything ?? []).map((f) => f.group).filter((g): g is string => Boolean(g)))].sort((a, b) => a.localeCompare(b)),
+    [everything],
+  );
+  const projects = useMemo(
+    () => [...new Set((everything ?? []).map((f) => f.project).filter((p): p is string => Boolean(p)))].sort((a, b) => a.localeCompare(b)),
+    [everything],
+  );
+  // A group that's gone (its last request aged out) shows everything again.
+  const activeGroup = group !== ALL && groups.includes(group) ? group : ALL;
+  const all = (everything ?? []).filter((f) => activeGroup === ALL || f.group === activeGroup);
   // Hidden only while the list still shows the status it had when you acted.
   const shown = (f: Feedback) => handled.get(f.id) !== f.status;
-  const byId = new Map(all.map((f) => [f.id, f]));
   const open = all.filter((f) => f.status === 'open' && shown(f));
   const progress = all.filter((f) => f.status !== 'open' && !isDone(f) && shown(f));
   const done = all.filter(isDone).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
@@ -104,9 +134,9 @@ export function FeedbackPage() {
     if (focusFound && focusId) scrollToFeedback(focusId);
   }, [focusFound, focusId]);
 
-  async function onAnswer(f: Feedback, action: FeedbackAction, answers: Record<string, FeedbackAnswerValue>, note: string): Promise<boolean> {
+  async function onAnswer(f: Feedback, action: FeedbackAction, { answers, notes, note }: FeedbackAnswer): Promise<boolean> {
     try {
-      await api.respondFeedback({ id: f.id, action, answers, note: note || null });
+      await api.respondFeedback({ id: f.id, action, answers, notes, note: note || null });
       setHandled((m) => new Map(m).set(f.id, f.status));
       refresh();
       return true;
@@ -130,7 +160,13 @@ export function FeedbackPage() {
     }
   }
 
-  const parentOf = (f: Feedback) => (f.follows ? byId.get(f.follows) : undefined);
+  const findRequest = (id: string) => byId.get(id);
+
+  async function uploadAnswerMedia(f: Feedback, file: File) {
+    const type = mediaTypeOf(file);
+    if (!type) throw new Error(`${file.name} isn't a picture, clip or sound`);
+    return (await api.addAnswerMedia(f.id, file, type)).stored;
+  }
 
   return (
     <>
@@ -145,6 +181,21 @@ export function FeedbackPage() {
         )
       ) : (
         <Stack gap="xl">
+          {groups.length > 0 && (
+            <Chip.Group value={activeGroup} onChange={(v) => setGroup(v as string)}>
+              <Group gap="xs" wrap="wrap" role="group" aria-label="Show group">
+                <Chip value={ALL} size="xs" variant="light">
+                  All
+                </Chip>
+                {groups.map((g) => (
+                  <Chip key={g} value={g} size="xs" variant="light">
+                    {g}
+                  </Chip>
+                ))}
+              </Group>
+            </Chip.Group>
+          )}
+
           {open.length === 0 ? (
             <EmptyState title="Nothing waiting on you">
               When an agent wants your view on something it made, or can't get past something without you, it asks here. Agents
@@ -169,10 +220,15 @@ export function FeedbackPage() {
                   <FeedbackCard
                     key={f.id}
                     feedback={f}
-                    parent={parentOf(f)}
+                    findRequest={findRequest}
                     agent={data.agents[f.agentId]}
                     highlighted={f.id === focusId}
-                    onAnswer={onAnswer}
+                    mediaUrl={(m) => feedbackMediaUrl(f.id, m)}
+                    uploadAnswerMedia={(file) => uploadAnswerMedia(f, file)}
+                    removeAnswerMedia={async (m) => {
+                      await api.removeAnswerMedia(f.id, m);
+                    }}
+                    onAnswer={(action, answer) => onAnswer(f, action, answer)}
                   />
                 ))}
               </SimpleGrid>
@@ -187,11 +243,12 @@ export function FeedbackPage() {
                   <FeedbackProgressCard
                     key={f.id}
                     feedback={f}
-                    parent={parentOf(f)}
+                    findRequest={findRequest}
                     agent={data.agents[f.agentId]}
                     message={f.messageId ? messages.get(f.messageId) : undefined}
                     now={data.now}
                     highlighted={f.id === focusId}
+                    mediaUrl={(m) => feedbackMediaUrl(f.id, m)}
                     onClose={onClose}
                   />
                 ))}
@@ -212,6 +269,8 @@ export function FeedbackPage() {
               </Paper>
             </Stack>
           )}
+
+          <EmailSubscriptions projects={projects} />
         </Stack>
       )}
     </>

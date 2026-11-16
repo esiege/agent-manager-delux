@@ -4,9 +4,9 @@
 export const API_BASE = '/api/v1';
 
 /** Bump when Docs/instructions.md changes in a way agents must act on (I-05). */
-export const INSTRUCTIONS_VERSION = 4;
+export const INSTRUCTIONS_VERSION = 5;
 /** When the instructions and agentctl last changed. web/public/update.md shows the same date. */
-export const INSTRUCTIONS_UPDATED = '2026-11-15';
+export const INSTRUCTIONS_UPDATED = '2026-11-16';
 
 export const AGENT_KINDS = ['claude-code', 'openclaw', 'service', 'other'] as const;
 export type AgentKind = (typeof AGENT_KINDS)[number];
@@ -32,8 +32,11 @@ export type TurnOutcome = (typeof TURN_OUTCOMES)[number];
 export const ALERT_EVENTS = ['finished', 'waiting', 'failed', 'unfinished', 'blocker'] as const;
 export type AlertEvent = (typeof ALERT_EVENTS)[number];
 
-/** Where alerts go. ntfy (https://ntfy.sh) is free: the phone app shows them like texts. */
-export const ALERT_CHANNELS = ['ntfy'] as const;
+/**
+ * Where alerts go. ntfy (https://ntfy.sh) is free: the phone app shows them like texts. Email goes
+ * through Azure Communication Services; feedback emails can be answered from the email.
+ */
+export const ALERT_CHANNELS = ['ntfy', 'email'] as const;
 export type AlertChannel = (typeof ALERT_CHANNELS)[number];
 
 /**
@@ -109,6 +112,14 @@ export const LIMITS = {
   feedbackImageBytes: 8 * 1024 * 1024,
   /** Videos and sounds. */
   feedbackClipBytes: 25 * 1024 * 1024,
+  /** A tag that groups requests, such as a release ("v0.20.0"). */
+  feedbackGroupLength: 80,
+  /** A caption under a picture, clip or sound. */
+  feedbackCaptionLength: 300,
+  /** A note under one question. */
+  feedbackQuestionNoteLength: 2000,
+  /** Files the owner attaches to an answer. */
+  feedbackAnswerMedia: 6,
 } as const;
 
 /** Owner calls that change something must carry this header, which another site can't add (CSRF). */
@@ -292,7 +303,7 @@ export interface AlertSubscription {
   /** Who or what it's for, such as "My phone". */
   name: string;
   channel: AlertChannel;
-  /** For ntfy: the topic's full URL, such as https://ntfy.sh/<a long random topic>. */
+  /** For ntfy: the topic's full URL, such as https://ntfy.sh/<a long random topic>. For email: the address. */
   target: string;
   events: AlertEvent[];
   /** Only these projects; empty means all. */
@@ -495,12 +506,14 @@ export interface FeedbackRatingQuestion extends FeedbackQuestionBase {
   max: number;
   low?: string | null;
   high?: string | null;
+  /** When set, the owner can answer this instead of a score ("Didn't see it"); the answer is "n/a". */
+  notApplicable?: string | null;
 }
 
 export type FeedbackQuestion = FeedbackTextQuestion | FeedbackChoiceQuestion | FeedbackRatingQuestion;
 export const FEEDBACK_QUESTION_TYPES = ['text', 'choice', 'rating'] as const;
 
-/** An answer to one question: text, an option id, option ids (multiple), or a score. */
+/** An answer to one question: text, an option id, option ids (multiple), a score, or "n/a" (a rating's notApplicable). */
 export type FeedbackAnswerValue = string | string[] | number;
 
 export interface FeedbackResponse {
@@ -508,9 +521,13 @@ export interface FeedbackResponse {
   answers: Record<string, FeedbackAnswerValue>;
   /** Anything else the owner wrote. */
   note: string | null;
-  /** The owner's login. */
+  /** A note under a question, by question id. */
+  notes?: Record<string, string>;
+  /** The owner's login, or the email address they answered from. */
   by: string;
   at: string;
+  /** Where they answered: the Feedback tab, or a link in an email. */
+  via?: 'site' | 'email';
 }
 
 /** One step in a request's life, shown as a panel on its card. */
@@ -547,8 +564,23 @@ export interface Feedback {
   response: FeedbackResponse | null;
   /** The request this one follows up on. */
   follows: string | null;
-  /** The request that followed up on this one. */
+  /** The request this one replaced (closed when this one was asked). */
+  supersedes?: string | null;
+  /** The request that followed up on this one, or replaced it. */
   followedBy: string | null;
+  /** A tag that groups requests, such as a release: "v0.20.0". */
+  group?: string | null;
+  /** Captions for attached files, by file name. */
+  captions?: Record<string, string>;
+  /** Files the owner attached to their answer. */
+  answerMedia?: FeedbackMedia[];
+  /**
+   * When alerts and emails went out. Null while the agent is still attaching files (it said how
+   * many with expectFiles), so the email has its pictures.
+   */
+  notifiedAt?: string | null;
+  /** How many files the agent said it would attach (FeedbackInput.expectFiles). */
+  expectFiles?: number;
   /** How the answer reaches the agent, in a few words; set when it's answered. */
   delivery: string | null;
   /** The message that carries the answer to the session, when one was sent. */
@@ -565,6 +597,13 @@ export interface FeedbackInput {
   /** Ids are optional: q1, q2… and 1, 2… are filled in. */
   questions?: unknown[];
   follows?: string | null;
+  /** An earlier request this one replaces: it's closed, linking here. */
+  supersedes?: string | null;
+  group?: string | null;
+  /** Captions by file name. */
+  captions?: Record<string, string>;
+  /** How many files will be attached next: alerts wait for them (or for POST /feedback/ready). */
+  expectFiles?: number;
   test?: boolean;
 }
 
@@ -578,8 +617,34 @@ export interface RespondFeedbackInput {
   id: string;
   action: 'send' | 'dismiss' | 'close';
   answers?: Record<string, FeedbackAnswerValue>;
+  /** Notes under questions, by question id. */
+  notes?: Record<string, string>;
   note?: string | null;
 }
+
+/**
+ * GET /api/v1/feedback/link?t=<token>: a request, for the answer page an email links to. The
+ * token is the only key: it's signed for one request and one email subscription, and expires.
+ */
+export interface FeedbackLinkResponse {
+  now: string;
+  feedback: Feedback;
+  /** Signed addresses for the request's files and the answer's, by media id. */
+  mediaUrls: Record<string, string>;
+  /** The email address the link was sent to: the answer is recorded as theirs. */
+  email: string;
+  /** False once it's answered (or after FEEDBACK_LINK_DAYS): the page then shows it read-only. */
+  canAnswer: boolean;
+}
+
+/** POST /api/v1/feedback/link/respond: answers from the page an email links to. */
+export interface LinkRespondInput extends Omit<RespondFeedbackInput, 'id' | 'action'> {
+  t: string;
+  action: 'send' | 'dismiss';
+}
+
+/** Email links stop working this long after the email. */
+export const FEEDBACK_LINK_DAYS = 14;
 
 /** POST /api/v1/feedback/status, with the machine key that asked. */
 export interface FeedbackStatusInput {

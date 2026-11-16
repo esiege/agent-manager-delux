@@ -1,5 +1,6 @@
 // Feedback: an agent asks the owner something, with pictures, clips or sounds and a few typed
-// questions (text, a choice, a rating). It shows on the Feedback tab, where the owner answers it.
+// questions (text, a choice, a rating). It shows on the Feedback tab, where the owner answers it,
+// or in an email whose signed links open an answer page that needs no sign-in (the /link calls).
 // The answer goes to the session as a message when it can take one, and the agent can always read
 // it back. The agent then reports what it does with it: viewed, planning, implementing, and closed
 // or a follow-up request.
@@ -23,7 +24,9 @@ import {
   feedbackNextSteps,
   maskSecrets,
   readFeedbackAnswers,
-  readFeedbackQuestions,
+  readFeedbackCaptions,
+  readFeedbackForm,
+  readFeedbackNotes,
   type AgentEvent,
   type AgentMessage,
   type Feedback,
@@ -31,15 +34,17 @@ import {
   type FeedbackCreateResponse,
   type FeedbackDetailResponse,
   type FeedbackInboxResponse,
+  type FeedbackLinkResponse,
   type FeedbackListResponse,
   type FeedbackMedia,
   type FeedbackMediaType,
   type FeedbackStatus,
   type FeedbackStep,
 } from '@agent-manager-delux/shared';
-import { feedbackPage, notifyFeedback } from '../alerts';
+import { feedbackPage, linkMediaUrl, notifyFeedback } from '../alerts';
 import { requireKey, requireOwner, requireOwnerWrite } from '../auth';
-import { HttpError, ok, publicOrigin, query, readJson, type Ctx, type Handler, type Req } from '../http';
+import { HttpError, ok, publicOrigin, query, readJson, type Ctx, type Handler, type Req, type Res } from '../http';
+import { readLink } from '../links';
 import type { MediaRange, MediaStore } from '../store/media';
 import { preview, queueMessage, whyNoMessages } from './messages';
 
@@ -68,11 +73,15 @@ function optionalText(body: unknown, name: string, max: number): string | null {
   return v.trim() || null;
 }
 
-function feedbackId(value: unknown): string {
+function feedbackId(value: unknown, what = 'id'): string {
   if (typeof value !== 'string' || !FEEDBACK_ID.test(value)) {
-    throw new HttpError(400, 'id must be a feedback id, as POST /api/v1/feedback returned it');
+    throw new HttpError(400, `${what} must be a feedback id, as POST /api/v1/feedback returned it`);
   }
   return value;
+}
+
+function optionalId(value: unknown, what: string): string | null {
+  return value === undefined || value === null || value === '' ? null : feedbackId(value, what);
 }
 
 /** FeedbackFormError is the caller's mistake: a 400 with its message. */
@@ -121,6 +130,17 @@ export async function markViewed(ctx: Ctx, id: string, at: string): Promise<Feed
   return next;
 }
 
+/** Sends the alerts and emails for a request, once. */
+async function notifyOnce(ctx: Ctx, f: Feedback, origin: string): Promise<Feedback> {
+  if (f.notifiedAt) return f;
+  const latest = (await ctx.store.getFeedback(f.id)) ?? f;
+  if (latest.notifiedAt) return latest;
+  const next = { ...latest, notifiedAt: ctx.now().toISOString() };
+  await ctx.store.putFeedback(next);
+  await notifyFeedback(ctx, next, origin);
+  return next;
+}
+
 // ---- Agents ----
 
 /** POST /api/v1/feedback: an agent asks for feedback. */
@@ -131,14 +151,22 @@ export const createFeedback: Handler = async (req, ctx) => {
   const title = requiredText(raw, 'title', LIMITS.feedbackTitleLength);
   // "details" is what blockers called it.
   const body = optionalText(raw, field(raw, 'body') === undefined ? 'details' : 'body', LIMITS.feedbackBodyLength);
-  const questions = form(() => readFeedbackQuestions(field(raw, 'questions')));
-  const followsRaw = field(raw, 'follows');
-  const follows = followsRaw === undefined || followsRaw === null || followsRaw === '' ? null : feedbackId(followsRaw);
+  const { questions, captions: formCaptions } = form(() => readFeedbackForm(field(raw, 'questions')));
+  const captions = { ...formCaptions, ...form(() => readFeedbackCaptions(field(raw, 'captions'))) };
+  const follows = optionalId(field(raw, 'follows'), 'follows');
+  const supersedes = optionalId(field(raw, 'supersedes'), 'supersedes');
+  const group = optionalText(raw, 'group', LIMITS.feedbackGroupLength);
+  const expectRaw = field(raw, 'expectFiles');
+  if (expectRaw !== undefined && (typeof expectRaw !== 'number' || !Number.isInteger(expectRaw) || expectRaw < 0 || expectRaw > LIMITS.feedbackMedia)) {
+    throw new HttpError(400, `expectFiles must be a whole number from 0 to ${LIMITS.feedbackMedia}`);
+  }
+  const expectFiles = (expectRaw as number | undefined) ?? 0;
   const test = field(raw, 'test') === true;
 
   const agent = await ctx.store.getAgent(agentId);
   if (!agent) throw new HttpError(404, `No agent with id ${agentId}: report it first (POST /api/v1/report), then ask`);
   const parent = follows ? await ownRequest(ctx, follows, key.name) : null;
+  const replaced = supersedes ? await ownRequest(ctx, supersedes, key.name) : null;
 
   const at = ctx.now().toISOString();
   const feedback: Feedback = {
@@ -157,8 +185,14 @@ export const createFeedback: Handler = async (req, ctx) => {
     updatedAt: at,
     history: [{ status: 'open', at, by: agent.name, note: null }],
     response: null,
-    follows,
+    follows: follows ?? null,
+    supersedes,
     followedBy: null,
+    group: group === null ? null : maskSecrets(group),
+    captions,
+    answerMedia: [],
+    notifiedAt: null,
+    expectFiles,
     delivery: null,
     messageId: null,
     keyName: key.name,
@@ -177,9 +211,25 @@ export const createFeedback: Handler = async (req, ctx) => {
     const moved = canAgentMove(parent.status, 'followup') ? step(linked, 'followup', agent.name, `Follow-up: ${feedback.title}`, at) : linked;
     await ctx.store.putFeedback(moved);
   }
+  if (replaced && replaced.id !== parent?.id) {
+    // The new one replaces it: close it, so old questions don't pile up.
+    const linked = { ...replaced, followedBy: feedback.id };
+    const done = FEEDBACK_DONE_STATUSES.includes(replaced.status) ? linked : step(linked, 'closed', agent.name, `Replaced by: ${feedback.title}`, at);
+    await ctx.store.putFeedback(done);
+  }
   await ctx.store.addEvents([feedbackEvent(agentId, `Asked for feedback: ${preview(feedback.title)}`, at)]);
-  await notifyFeedback(ctx, feedback, origin);
+  // With files to come, the alerts wait for them (or for POST /feedback/ready), so emails have them.
+  if (expectFiles === 0) res.stored = await notifyOnce(ctx, feedback, origin);
   return ok(res, 201);
+};
+
+/** POST /api/v1/feedback/ready: the agent has attached what it's going to; send the alerts now. */
+export const feedbackReady: Handler = async (req, ctx) => {
+  const key = await requireKey(req, ctx);
+  const id = feedbackId(field(readJson(req, MAX_BODY), 'id'));
+  const found = await ownRequest(ctx, id, key.name);
+  const done = await notifyOnce(ctx, found, publicOrigin(req, ctx.env));
+  return ok({ ok: true, test: false, stored: done, warnings: [] });
 };
 
 /** The first bytes of each type, so a file can't claim to be something it isn't. */
@@ -218,14 +268,8 @@ function fileName(value: string | null): string | null {
   return name ? name.slice(0, FILE_NAME_LENGTH) : null;
 }
 
-/**
- * POST /api/v1/feedback/media?id=<request>&name=<file name>: adds one picture, clip or sound.
- * The body is the file itself, with its Content-Type. Questions and options refer to it by name.
- */
-export const addFeedbackMedia: Handler = async (req, ctx) => {
-  const key = await requireKey(req, ctx);
-  const params = query(req);
-  const id = feedbackId(params.get('id'));
+/** Checks an uploaded file and stores its bytes. The caller adds the returned item to the request. */
+async function receiveFile(req: Req, ctx: Ctx, id: string): Promise<FeedbackMedia> {
   const contentType = (req.headers.get('content-type') ?? '').split(';')[0]!.trim().toLowerCase();
   if (!(contentType in FEEDBACK_MEDIA_TYPES)) {
     throw new HttpError(415, `Content-Type must be one of ${Object.keys(FEEDBACK_MEDIA_TYPES).join(', ')}`);
@@ -239,23 +283,41 @@ export const addFeedbackMedia: Handler = async (req, ctx) => {
     throw new HttpError(413, `The ${kind} is ${bytes.length} bytes; the limit is ${max} (${max / 1024 / 1024} MB). Shrink or trim it.`);
   }
   if (!looksLike(type, bytes)) throw new HttpError(415, `The file doesn't look like ${type}`);
-
-  const found = await ownRequest(ctx, id, key.name);
-  if (found.status !== 'open') throw new HttpError(409, `The request is ${FEEDBACK_STATUS_LABEL[found.status].toLowerCase()} already`);
-  if (found.media.length >= LIMITS.feedbackMedia) throw new HttpError(409, `A request holds at most ${LIMITS.feedbackMedia} files`);
-
   const item: FeedbackMedia = {
     id: randomUUID(),
     contentType: type,
     kind,
     bytes: bytes.length,
-    name: fileName(params.get('name')),
+    name: fileName(query(req).get('name')),
     at: ctx.now().toISOString(),
   };
   await media(ctx).put(`${id}/${item.id}`, bytes, type);
+  return item;
+}
+
+function mustBeOpen(f: Feedback) {
+  if (f.status !== 'open') throw new HttpError(409, `The request is ${FEEDBACK_STATUS_LABEL[f.status].toLowerCase()} already`);
+}
+
+/**
+ * POST /api/v1/feedback/media?id=<request>&name=<file name>: adds one picture, clip or sound.
+ * The body is the file itself, with its Content-Type. Questions and options refer to it by name.
+ */
+export const addFeedbackMedia: Handler = async (req, ctx) => {
+  const key = await requireKey(req, ctx);
+  const id = feedbackId(query(req).get('id'));
+  const found = await ownRequest(ctx, id, key.name);
+  mustBeOpen(found);
+  if (found.media.length >= LIMITS.feedbackMedia) throw new HttpError(409, `A request holds at most ${LIMITS.feedbackMedia} files`);
+  const item = await receiveFile(req, ctx, id);
   // Read again: two files sent at once must both be kept.
   const latest = (await ctx.store.getFeedback(id)) ?? found;
-  await ctx.store.putFeedback({ ...latest, media: [...latest.media, item] });
+  let next: Feedback = { ...latest, media: [...latest.media, item] };
+  await ctx.store.putFeedback(next);
+  // The last file it said it would send: the alerts can go now.
+  if (!next.notifiedAt && next.expectFiles && next.media.length >= next.expectFiles) {
+    next = await notifyOnce(ctx, next, publicOrigin(req, ctx.env));
+  }
   return ok({ ok: true, test: false, stored: item, warnings: [] }, 201);
 };
 
@@ -279,7 +341,7 @@ export const feedbackItem: Handler = async (req, ctx) => {
   return ok(res);
 };
 
-/** GET /api/v1/feedback/inbox: the key's requests that are answered and not done, so the agent can catch up. */
+/** GET /api/v1/feedback/inbox: the key's requests that aren't done, so the agent can catch up. */
 export const feedbackInbox: Handler = async (req, ctx) => {
   const key = await requireKey(req, ctx);
   const list = await ctx.store.listFeedbackFor(key.name);
@@ -349,18 +411,12 @@ function parseRange(header: string | null, size: number): MediaRange | null {
   return { start, end };
 }
 
-/** GET /api/v1/feedback/media?id=<request>&media=<id>: the file, with Range support so clips can seek. */
-export const feedbackMedia: Handler = async (req: Req, ctx) => {
-  requireOwner(req, ctx);
-  const params = query(req);
-  const id = feedbackId(params.get('id'));
-  const mediaId = params.get('media') ?? '';
-  const found = await ctx.store.getFeedback(id);
-  const item = found?.media.find((m) => m.id === mediaId);
-  if (!found || !item) throw new HttpError(404, 'No such file');
-
+/** One of a request's files, or of its answer's, with Range support so clips can seek. */
+async function serveFile(req: Req, ctx: Ctx, f: Feedback | null, mediaId: string): Promise<Res> {
+  const item = f ? [...f.media, ...(f.answerMedia ?? [])].find((m) => m.id === mediaId) : undefined;
+  if (!f || !item) throw new HttpError(404, 'No such file');
   const range = parseRange(req.headers.get('range'), item.bytes);
-  const file = await media(ctx).get(`${id}/${item.id}`, range ?? undefined);
+  const file = await media(ctx).get(`${f.id}/${item.id}`, range ?? undefined);
   if (!file) throw new HttpError(404, 'The file is gone: it may have aged out');
   const headers: Record<string, string> = {
     'content-type': item.contentType,
@@ -373,18 +429,65 @@ export const feedbackMedia: Handler = async (req: Req, ctx) => {
   };
   if (range) headers['content-range'] = `bytes ${range.start}-${range.start + file.bytes.length - 1}/${file.size}`;
   return { status: range ? 206 : 200, body: null, bytes: file.bytes, headers };
+}
+
+/** GET /api/v1/feedback/media?id=<request>&media=<id>: a file, for the owner or the key that asked. */
+export const feedbackMedia: Handler = async (req: Req, ctx) => {
+  const params = query(req);
+  const id = feedbackId(params.get('id'));
+  const key = req.headers.get('x-agent-manager-key') ? await requireKey(req, ctx) : null;
+  const found = key ? await ownRequest(ctx, id, key.name) : (requireOwner(req, ctx), await ctx.store.getFeedback(id));
+  return serveFile(req, ctx, found, params.get('media') ?? '');
 };
 
 /** What the session is told when the owner answers: the answer itself, and what to report next. */
-function answerText(f: Feedback, login: string): string {
+function answerText(f: Feedback, by: string): string {
   const verb = f.status === 'dismissed' ? 'dismissed' : 'answered';
-  const head = `${login} ${verb} your feedback request "${f.title}" (${f.id}).`;
+  const head = `${by} ${verb} your feedback request "${f.title}" (${f.id}).`;
   const tail = feedbackNextSteps(f, AGENTCTL);
   const answer = describeFeedbackAnswer(f);
   const room = LIMITS.agentMessageLength - head.length - tail.length - 8;
   const more = `… (cut short: read it all with ${AGENTCTL} feedback ${f.id})`;
   const body = answer.length > room ? `${answer.slice(0, Math.max(0, room - more.length))}${more}` : answer;
   return `${head}\n\n${body}\n\n${tail}`;
+}
+
+/** Sends or dismisses an open request, from the tab or from an email link, and tells the session. */
+async function answer(ctx: Ctx, found: Feedback, by: string, via: 'site' | 'email', action: 'send' | 'dismiss', body: unknown): Promise<Feedback> {
+  if (found.status !== 'open') {
+    const who = found.response?.by ?? [...found.history].reverse().find((s) => s.status === 'dismissed' || s.status === 'closed')?.by;
+    throw new HttpError(409, `It was ${FEEDBACK_STATUS_LABEL[found.status].toLowerCase()} already${who ? ` (${who})` : ''}`);
+  }
+  const note = optionalText(body, 'note', LIMITS.feedbackAnswerLength);
+  const answers = action === 'send' ? form(() => readFeedbackAnswers(found.questions, field(body, 'answers'))) : {};
+  const notes = form(() => readFeedbackNotes(found.questions, field(body, 'notes')));
+  const files = found.answerMedia ?? [];
+  if (action === 'send' && note === null && Object.keys(answers).length === 0 && Object.keys(notes).length === 0 && files.length === 0) {
+    throw new HttpError(400, 'Answer a question, write a note or attach a file, or dismiss it');
+  }
+  const now = ctx.now();
+  const at = now.toISOString();
+  const response = { answers, ...(Object.keys(notes).length ? { notes } : {}), note, by, at, via };
+  let next: Feedback =
+    action === 'send'
+      ? { ...step(found, 'sent', by, null, at), response }
+      : { ...step(found, 'dismissed', by, note, at), response: note || Object.keys(notes).length || files.length ? response : null };
+
+  const agent = await ctx.store.getAgent(found.agentId);
+  const refused = agent ? whyNoMessages(agent, now) : 'The agent is gone';
+  if (agent && !refused) {
+    const verb = action === 'send' ? 'Feedback sent' : 'Feedback dismissed';
+    const message = await queueMessage(ctx, agent, answerText(next, by), by, `${verb} by ${by}: ${preview(found.title)}`, found.id);
+    next = { ...next, messageId: message.id, delivery: `Sent to the session as a message. It arrives if messages are on for ${found.machine}.` };
+  } else {
+    const why = refused!.charAt(0).toLowerCase() + refused!.slice(1);
+    next = { ...next, delivery: `Not sent as a message: ${why}. The agent sees it when it checks its feedback.` };
+  }
+  await ctx.store.putFeedback(next);
+  await ctx.store.addEvents([
+    feedbackEvent(found.agentId, `Feedback ${action === 'send' ? 'sent' : 'dismissed'} by ${by}${via === 'email' ? ' (from an email)' : ''}: ${preview(found.title)}`, at),
+  ]);
+  return next;
 }
 
 /** POST /api/v1/feedback/respond: the owner answers a request, dismisses it, or closes one the agent never closed. */
@@ -394,50 +497,122 @@ export const respondFeedback: Handler = async (req, ctx) => {
   const id = feedbackId(field(body, 'id'));
   const action = field(body, 'action');
   if (action !== 'send' && action !== 'dismiss' && action !== 'close') throw new HttpError(400, 'action must be send, dismiss or close');
-  const note = optionalText(body, 'note', LIMITS.feedbackAnswerLength);
-
   const found = await ctx.store.getFeedback(id);
   if (!found) throw new HttpError(404, `No feedback request with id ${id}`);
-  const now = ctx.now();
-  const at = now.toISOString();
 
   if (action === 'close') {
     if (FEEDBACK_DONE_STATUSES.includes(found.status)) throw new HttpError(409, `It's ${FEEDBACK_STATUS_LABEL[found.status].toLowerCase()} already`);
+    const note = optionalText(body, 'note', LIMITS.feedbackAnswerLength);
+    const at = ctx.now().toISOString();
     const done = step(found, 'closed', owner.login, note ?? `Closed by ${owner.login}`, at);
     await ctx.store.putFeedback(done);
     await ctx.store.addEvents([feedbackEvent(found.agentId, `Feedback closed by ${owner.login}: ${preview(found.title)}`, at)]);
     return ok({ feedback: done });
   }
+  return ok({ feedback: await answer(ctx, found, owner.login, 'site', action, body) });
+};
 
-  if (found.status !== 'open') {
-    const by = found.response?.by ?? [...found.history].reverse().find((s) => s.status === 'dismissed' || s.status === 'closed')?.by;
-    throw new HttpError(409, `It was ${FEEDBACK_STATUS_LABEL[found.status].toLowerCase()} already${by ? ` (${by})` : ''}`);
+/** Adds a file to the answer of an open request. */
+async function attachToAnswer(req: Req, ctx: Ctx, found: Feedback): Promise<FeedbackMedia> {
+  mustBeOpen(found);
+  if ((found.answerMedia ?? []).length >= LIMITS.feedbackAnswerMedia) {
+    throw new HttpError(409, `An answer holds at most ${LIMITS.feedbackAnswerMedia} files`);
   }
-  const answers = action === 'send' ? form(() => readFeedbackAnswers(found.questions, field(body, 'answers'))) : {};
-  if (action === 'send' && note === null && Object.keys(answers).length === 0) {
-    throw new HttpError(400, 'Answer a question or write a note, or dismiss it');
-  }
-  let next =
-    action === 'send'
-      ? { ...step(found, 'sent', owner.login, null, at), response: { answers, note, by: owner.login, at } }
-      : step(found, 'dismissed', owner.login, note, at);
-  if (action === 'dismiss' && note) next = { ...next, response: { answers: {}, note, by: owner.login, at } };
+  const item = await receiveFile(req, ctx, found.id);
+  const latest = (await ctx.store.getFeedback(found.id)) ?? found;
+  await ctx.store.putFeedback({ ...latest, answerMedia: [...(latest.answerMedia ?? []), item] });
+  return item;
+}
 
-  const agent = await ctx.store.getAgent(found.agentId);
-  const refused = agent ? whyNoMessages(agent, now) : 'The agent is gone';
-  if (agent && !refused) {
-    const verb = action === 'send' ? 'Feedback sent' : 'Feedback dismissed';
-    const message = await queueMessage(ctx, agent, answerText(next, owner.login), owner.login, `${verb} by ${owner.login}: ${preview(found.title)}`, found.id);
-    next = { ...next, messageId: message.id, delivery: `Sent to the session as a message. It arrives if messages are on for ${found.machine}.` };
-  } else {
-    const why = refused!.charAt(0).toLowerCase() + refused!.slice(1);
-    next = { ...next, delivery: `Not sent as a message: ${why}. The agent sees it when it checks its feedback.` };
-  }
+async function detachFromAnswer(ctx: Ctx, found: Feedback, mediaId: unknown): Promise<Feedback> {
+  mustBeOpen(found);
+  const item = (found.answerMedia ?? []).find((m) => m.id === mediaId);
+  if (!item) throw new HttpError(404, 'No such file on the answer');
+  await media(ctx)
+    .delete(`${found.id}/${item.id}`)
+    .catch(() => {});
+  const next = { ...found, answerMedia: (found.answerMedia ?? []).filter((m) => m.id !== item.id) };
   await ctx.store.putFeedback(next);
-  await ctx.store.addEvents([
-    feedbackEvent(found.agentId, `Feedback ${action === 'send' ? 'sent' : 'dismissed'} by ${owner.login}: ${preview(found.title)}`, at),
-  ]);
-  return ok({ feedback: next });
+  return next;
+}
+
+/** POST /api/v1/feedback/answer-media?id=&name=: the owner attaches a file to their answer. */
+export const addAnswerMedia: Handler = async (req, ctx) => {
+  requireOwnerWrite(req, ctx);
+  const id = feedbackId(query(req).get('id'));
+  const found = await ctx.store.getFeedback(id);
+  if (!found) throw new HttpError(404, `No feedback request with id ${id}`);
+  return ok({ ok: true, test: false, stored: await attachToAnswer(req, ctx, found), warnings: [] }, 201);
+};
+
+/** POST /api/v1/feedback/answer-media/remove {id, media}: the owner takes a file off their answer. */
+export const removeAnswerMedia: Handler = async (req, ctx) => {
+  requireOwnerWrite(req, ctx);
+  const body = readJson(req, MAX_BODY);
+  const id = feedbackId(field(body, 'id'));
+  const found = await ctx.store.getFeedback(id);
+  if (!found) throw new HttpError(404, `No feedback request with id ${id}`);
+  return ok({ feedback: await detachFromAnswer(ctx, found, field(body, 'media')) });
+};
+
+// ---- From an email: the signed link is the key ----
+
+/** The request and the address a link is for. A deleted or switched-off subscription kills its links. */
+async function fromLink(ctx: Ctx, token: string | null | undefined): Promise<{ f: Feedback; email: string; token: string }> {
+  const claims = readLink(ctx.env, token, ctx.now());
+  const sub = await ctx.store.getAlert(claims.s);
+  if (!sub || sub.channel !== 'email' || !sub.enabled) {
+    throw new HttpError(401, 'The email alert this link came from was removed or turned off. Open the request on the Feedback tab instead.');
+  }
+  const f = await ctx.store.getFeedback(claims.f);
+  if (!f) throw new HttpError(404, 'This request is gone: it may have aged out');
+  return { f, email: sub.target, token: token! };
+}
+
+function linkView(req: Req, ctx: Ctx, f: Feedback, email: string, token: string): FeedbackLinkResponse {
+  const origin = publicOrigin(req, ctx.env);
+  const mediaUrls: Record<string, string> = {};
+  for (const m of [...f.media, ...(f.answerMedia ?? [])]) mediaUrls[m.id] = linkMediaUrl(origin, token, m.id);
+  // Only what the page shows: not the machine key's name.
+  const { keyName: _key, ...shown } = f;
+  return { now: ctx.now().toISOString(), feedback: { ...shown, keyName: '' }, mediaUrls, email, canAnswer: f.status === 'open' };
+}
+
+/** GET /api/v1/feedback/link?t=: the request, for the answer page an email links to. */
+export const linkFeedback: Handler = async (req, ctx) => {
+  const { f, email, token } = await fromLink(ctx, query(req).get('t'));
+  return ok(linkView(req, ctx, f, email, token));
+};
+
+/** GET /api/v1/feedback/link/media?t=&media=: a file, for the email and its answer page. */
+export const linkMedia: Handler = async (req, ctx) => {
+  const params = query(req);
+  const { f } = await fromLink(ctx, params.get('t'));
+  return serveFile(req, ctx, f, params.get('media') ?? '');
+};
+
+/** POST /api/v1/feedback/link/respond {t, action, answers, notes, note}: answers from the email's page. */
+export const linkRespond: Handler = async (req, ctx) => {
+  const body = readJson(req, MAX_BODY);
+  const { f, email, token } = await fromLink(ctx, field(body, 't') as string);
+  const action = field(body, 'action');
+  if (action !== 'send' && action !== 'dismiss') throw new HttpError(400, 'action must be send or dismiss');
+  const done = await answer(ctx, f, email, 'email', action, body);
+  return ok({ feedback: linkView(req, ctx, done, email, token).feedback });
+};
+
+/** POST /api/v1/feedback/link/answer-media?t=&name=: attaches a file to the answer, from the email's page. */
+export const linkAddAnswerMedia: Handler = async (req, ctx) => {
+  const { f } = await fromLink(ctx, query(req).get('t'));
+  return ok({ ok: true, test: false, stored: await attachToAnswer(req, ctx, f), warnings: [] }, 201);
+};
+
+/** POST /api/v1/feedback/link/answer-media/remove {t, media}. */
+export const linkRemoveAnswerMedia: Handler = async (req, ctx) => {
+  const body = readJson(req, MAX_BODY);
+  const { f, email, token } = await fromLink(ctx, field(body, 't') as string);
+  const next = await detachFromAnswer(ctx, f, field(body, 'media'));
+  return ok({ feedback: linkView(req, ctx, next, email, token).feedback });
 };
 
 // ---- For agentctl versions from before feedback ----

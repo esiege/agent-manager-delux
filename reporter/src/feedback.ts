@@ -115,7 +115,8 @@ function splitBars(value: string): string[] {
  *   --question "Anything else?"
  *   --choice "Which teeth?|Ivory|Gold*"       (* marks the option you recommend)
  *   --multi "Which levels feel slow?|Swamp|Mill|Dam"
- *   --rating "How menacing is it?|Cuddly|Terrifying"   (1 to 5; the words are for the ends)
+ *   --rating "How menacing is it?|Cuddly|Terrifying|Didn't hear it"
+ *       (1 to 5; the words are for the ends; a fourth part adds a "didn't see it" answer)
  * The manager checks the rest (lengths, counts) and says what to fix.
  */
 export function questionFromFlag(flag: QuestionFlag, value: string): Record<string, unknown> {
@@ -123,8 +124,8 @@ export function questionFromFlag(flag: QuestionFlag, value: string): Record<stri
   if (!prompt) throw new FeedbackFileError(`--${flag} needs the question first: --${flag} "<question>|..."`);
   if (flag === 'question') return { type: 'text', prompt: [prompt, ...rest].join(' | ') };
   if (flag === 'rating') {
-    const [low, high] = rest;
-    return { type: 'rating', prompt, max: 5, ...(low ? { low } : {}), ...(high ? { high } : {}) };
+    const [low, high, na] = rest;
+    return { type: 'rating', prompt, max: 5, ...(low ? { low } : {}), ...(high ? { high } : {}), ...(na ? { notApplicable: na } : {}) };
   }
   if (rest.length < 2) throw new FeedbackFileError(`--${flag} needs at least two options: --${flag} "${prompt}|<option>|<option>"`);
   let recommended: string | undefined;
@@ -145,10 +146,12 @@ export interface Form {
 }
 
 /**
- * A --form file: a list of questions, or { "body", "questions" }. Media a question or option names
- * that's a file on disk (relative to the form) is attached, and the form keeps just its name.
+ * A --form file: a list of questions, or { "body", "questions" }. Every file a question or option
+ * names (a path, or { "file": "<path>", "caption": "<text>" }, relative to the form) is attached,
+ * and the form keeps just its name. A file that isn't there is an error, unless it's one of
+ * `attachedNames` (files given with --image and the like).
  */
-export function readForm(text: string, formPath: string | null): Form {
+export function readForm(text: string, formPath: string | null, attachedNames: readonly string[] = []): Form {
   let raw: unknown;
   try {
     raw = JSON.parse(text);
@@ -161,12 +164,24 @@ export function readForm(text: string, formPath: string | null): Form {
   }
   const base = formPath ? dirname(resolve(formPath)) : process.cwd();
   const files = new Set<string>();
-  const attach = (name: unknown): unknown => {
-    if (typeof name !== 'string') return name;
+  const missing: string[] = [];
+  const attachPath = (name: string): string => {
     const path = resolve(base, name);
-    if (!existsSync(path)) return name; // a file attached some other way, by name
-    files.add(path);
-    return basename(path);
+    if (existsSync(path)) {
+      files.add(path);
+    } else if (!attachedNames.includes(basename(name.replace(/\\/g, '/')))) {
+      missing.push(name);
+    }
+    return basename(name.replace(/\\/g, '/'));
+  };
+  const attach = (entry: unknown): unknown => {
+    if (typeof entry === 'string') return attachPath(entry);
+    if (typeof entry === 'object' && entry !== null && !Array.isArray(entry)) {
+      const r = entry as Record<string, unknown>;
+      const file = r.file ?? r.name;
+      if (typeof file === 'string') return { ...r, file: attachPath(file) };
+    }
+    return entry; // the manager says what's wrong with it
   };
   const questions = (root.questions as unknown[]).map((q) => {
     if (typeof q !== 'object' || q === null) return q as Record<string, unknown>;
@@ -180,6 +195,11 @@ export function readForm(text: string, formPath: string | null): Form {
     }
     return out;
   });
+  if (missing.length) {
+    throw new FeedbackFileError(
+      `The form names ${missing.length === 1 ? 'a file that isn\'t there' : 'files that aren\'t there'}: ${missing.join(', ')} (paths are relative to the form). Nothing was sent.`,
+    );
+  }
   const body = typeof root.body === 'string' && root.body.trim() ? root.body.trim() : null;
   return { body, questions, files: [...files] };
 }
