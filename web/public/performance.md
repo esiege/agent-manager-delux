@@ -28,7 +28,7 @@ A **session** is one run of the game on one machine. The game makes its id, says
 1. At startup, make a session id (a UUID) and call **session**.
 2. While running, measure each frame. Every 5 to 10 seconds, turn the window into one sample. Send the samples you have every 30 to 60 seconds, in one call.
 3. On exit, send what is left, then call **session** again with `"ended": true`.
-4. If the game crashed, it can't say so while crashing. On the next launch, before starting the new session, report the old one as crashed: see "Errors and crashes" below.
+4. If the game crashes, Unreal's crash reporter sends the crash right away, and the next launch fills in anything missing: see "Errors and crashes" below.
 
 ## Session: `POST $MANAGER_URL/api/v1/perf/session`
 
@@ -47,6 +47,7 @@ Call it again with the same `sessionId` to add to what is known or to end the se
 | `loadSeconds` | no | How long the game took to start, up to its first playable frame. Send it once it's known. |
 | `details` | no | Any other JSON worth comparing runs by: quality preset, graphics API, GPU driver, window mode, screen percentage. Unknown top-level fields are kept here too. |
 | `ended` | no | `true` when the run is over. |
+| `kind` | no | `test` for automated or development runs (a headless test, an agent's check). They're hidden on the Game tab and from `agentctl perf` unless asked for, and their crashes don't ask the person anything. Leave it out for real play. |
 | `crash` | no | The run crashed: `{"reason": "...", "callstack": "...", "t": 312.5, "scene": "forest"}`. Only `reason` is required. See "Errors and crashes". |
 
 The answer includes `sessionUrl`, the session's page in Agent Manager Delux.
@@ -75,7 +76,7 @@ Body: `{"sessionId": "...", "samples": [ ... ], "hitchEvents": [ ... ], "errorEv
 | `drawCalls` | no | Average per frame. |
 | `pingMs` | no | For networked games. |
 | `scene` | no | The level, scene or menu the window was in. The session's page breaks the numbers down by it. |
-| `metrics` | no | Any other numbers, by name: `{"entities": 412, "particles": 9000}`. Each gets its own chart. Up to 32. A number under any other unknown field is kept as a metric too. |
+| `metrics` | no | Any other numbers, by name: `{"entities": 412, "particles": 9000, "matchNumber": 3, "leakedActors": 0}`. **Each gets its own chart on the session's page**, so counters you want to watch over a run go here (match number, leak counters, entity counts). Up to 32. A number under any other unknown field is kept as a metric too. |
 
 `hitchEvents` lists single slow frames, so there is something to open in a profiler: `{"t": 41.2, "frameMs": 140.2, "gameMs": 30, "renderMs": 120, "gpuMs": 20, "scene": "fire"}`. Only `t` and `frameMs` are required. Send up to 200 per call; the session keeps the worst 50 of everything it is sent.
 
@@ -97,13 +98,65 @@ The answer's `stored` says how many samples were new (`count`) and how many it a
 
 `{"t": 41.2, "kind": "error", "message": "LogTexture: Error: Texture T_Rock is missing", "scene": "forest"}`. `kind` is `error` (the default), `ensure` or `warning`. Send up to 100 per call, and up to 1000 characters per message. The session keeps each distinct message once, with how often it was sent, up to 30 of them, so repeats are cheap. Leave player names, file paths with user names and other personal details out of the message.
 
-**Crashes, on the next launch.** A crashing game can't reliably make an HTTP call, so:
+### What happens to a crash
+
+Each crash is a record of its own on the **Crashes** tab: the reason, the callstack, the end of the log, and **breadcrumbs** (what the game was doing just before). A crash with a `sessionId` marks that session **Crashed**. A new crash that isn't a test run also puts an item on the person's **Feedback** tab asking what they were doing, and their answer shows with the crash. One session has at most one crash: if it's reported twice (the crash reporter, then the next launch), the second fills in what the first lacked.
+
+### Crashes from Unreal's crash reporter (do this first)
+
+When an Unreal game crashes, a separate program, CrashReportClient, starts and uploads the crash report. Point it at Agent Manager Delux and the crash arrives within seconds, with its callstack and log, without waiting for the next launch.
+
+1. **Include the crash reporter in packaged builds**: Project Settings > Packaging > "Include Crash Reporter" (`bIncludeCrashReporter=True` under `[/Script/UnrealEd.ProjectPackagingSettings]` in `Config/DefaultGame.ini`). Without it a shipped game leaves no crash report at all.
+2. **Point it here**, in the packaged build's `DefaultEngine.ini`:
+
+   ```ini
+   [CrashReportClient]
+   CrashReportClientVersion=1.0
+   DataRouterUrl="$MANAGER_URL/api/v1/perf/crash/unreal/<the game key>"
+   ```
+
+   The game key goes in the path because the crash reporter can't send headers. Like the key itself, this line belongs in the build, not in git: add it when packaging, from the same git-ignored key file (see "If there's no game key"). By default the crash reporter shows a dialog with a Send button; check your engine version's settings if you want it to send without asking.
+3. **Tag the crash with the session**, so it lands on the right run. At startup, and whenever they change, set game data that goes into every crash report:
+
+   ```cpp
+   FGenericCrashContext::SetGameData(TEXT("AMSessionId"), SessionId);
+   FGenericCrashContext::SetGameData(TEXT("AMGame"), TEXT("musik"));
+   FGenericCrashContext::SetGameData(TEXT("AMMachine"), MachineName);     // the same `machine` the session sends
+   FGenericCrashContext::SetGameData(TEXT("AMBuild"), BuildVersion);
+   FGenericCrashContext::SetGameData(TEXT("AMScene"), CurrentScene);      // update on every level or menu change
+   FGenericCrashContext::SetGameData(TEXT("AMBreadcrumbs"), Breadcrumbs); // see below
+   FGenericCrashContext::SetGameData(TEXT("AMKind"), TEXT("test"));       // only for automated or development runs
+   ```
+
+   **Breadcrumbs** are the story of the last minute: "Loaded level forest | Match started | Opened map". Keep the last 20 to 30 short events in a list and set `AMBreadcrumbs` to them joined with ` | ` whenever one is added. They're what tells you what the player did right before the crash.
+
+Agent Manager Delux keeps the error message, the callstack, the last 32 KB of the log and the engine version from the report. It hides user names in paths (`C:\Users\<user>\...`) and doesn't keep the minidump.
+
+### Crashes as JSON (other engines, or a tool that read the report)
+
+`POST $MANAGER_URL/api/v1/perf/crash` with the game key:
+
+| Field | Required | Meaning |
+| --- | --- | --- |
+| `game`, `machine` | yes | As the session sends them. |
+| `reason` | yes | One line: the exception, assert or signal. |
+| `sessionId` | no | The run that crashed: it's marked crashed. |
+| `build`, `platform` | no | As the session sends them. |
+| `callstack` | no | As text, up to 16,000 characters. |
+| `log` | no | The end of the game's log; the last 32,000 characters are kept. |
+| `breadcrumbs` | no | What the game did just before, oldest first: `["Loaded level forest", "Opened map"]`. Up to 100. |
+| `at`, `t`, `scene` | no | When it crashed (ISO time), seconds into the run, and where. |
+| `details` | no | Anything else: engine version, GPU driver. |
+| `kind` | no | `test` for automated or development runs. |
+
+### Crashes on the next launch (the fallback)
+
+For a crash the crash reporter didn't send (a hang the player killed, a build without the crash reporter):
 
 1. At startup, write the new session id to a small file in the game's saved-data folder (in Unreal, under `FPaths::ProjectSavedDir()`). On a clean exit, after sending `"ended": true`, delete it.
 2. At the next startup, if that file is still there, the last run didn't exit cleanly. Before starting the new session, call **session** for the old id, with the old `game` and `machine` and a `crash`:
-   - `reason`: one line: the exception, assert or signal. In Unreal, read the newest folder under `Saved/Crashes/` (its `CrashContext.runtime-xml` has `ErrorMessage` and the callstack). If there is no crash report, send `"reason": "Did not exit cleanly (no crash report)"`.
-   - `callstack`: the callstack as text, up to 16,000 characters.
-   - `t` and `scene`, if the game wrote them to the file as it ran.
+   - `reason`: one line. In Unreal, read the newest folder under `Saved/Crashes/` (in a shipped game, `%LOCALAPPDATA%\<Game>\Saved\Crashes\`); its `CrashContext.runtime-xml` has `ErrorMessage` and the callstack. If there is no crash report, send `"reason": "Did not exit cleanly (no crash report)"`.
+   - `callstack`, `t` and `scene`, if you have them.
 3. Then delete the file and carry on as normal.
 
 ```bash
@@ -112,7 +165,11 @@ curl -fsS -X POST "$MANAGER_URL/api/v1/perf/session" \
   -d '{"sessionId":"0b9c1c1e-6f0a-4c56-9a53-2f8f4d1f7a10","game":"musik","machine":"pc-studio","crash":{"reason":"EXCEPTION_ACCESS_VIOLATION reading address 0x00000000","callstack":"UMyActor::Tick()\nFActorTickFunction::ExecuteTick()","t":312.5,"scene":"forest"}}'
 ```
 
-A crashed session ends at the time it was last heard from, and shows as **Crashed** on the Game tab. A session that stopped sending without ending or a crash report shows as **No clean exit**.
+If the crash reporter already sent this crash, this only fills in what it lacked. A session that stopped sending without ending or any crash report shows as **No clean exit**.
+
+### Losing less of the run
+
+A crash loses what wasn't sent yet. While a run is going, send samples every 10 to 15 seconds rather than every minute, and send error messages with each batch.
 
 ## Getting it right in the game
 
@@ -128,14 +185,19 @@ An agent on a PC that is set up with `agentctl` (so with a machine key, not a ga
 
 ```bash
 node "$HOME/.agent-manager/agentctl.js" perf --game musik --limit 20   # one line a session, newest first; --json for JSON
+node "$HOME/.agent-manager/agentctl.js" perf --machine "gaming rig" --scene match --status crashed   # narrowed down
 node "$HOME/.agent-manager/agentctl.js" perf <sessionId>               # the whole session as JSON: totals, worst hitches, errors, crash, samples
+node "$HOME/.agent-manager/agentctl.js" crashes --game musik           # one line a crash, newest first
+node "$HOME/.agent-manager/agentctl.js" crashes <id>                   # one crash: reason, what the person was doing, breadcrumbs, callstack, log
 ```
 
-Those are `GET $MANAGER_URL/api/v1/perf/sessions?game=&days=&limit=` and `GET $MANAGER_URL/api/v1/perf/session?id=`, with the machine key in `X-Agent-Manager-Key`. If `perf` is an unknown command, the PC has an older `agentctl.js`: download it again as `$MANAGER_URL/instructions.md` describes.
+Test runs are left out unless you add `--tests`. `--machine` takes the machine's name or the nickname the person gave it on the site.
+
+Those are `GET $MANAGER_URL/api/v1/perf/sessions?game=&days=&limit=&tests=1`, `GET $MANAGER_URL/api/v1/perf/session?id=`, `GET $MANAGER_URL/api/v1/perf/crashes?game=&machine=&days=&tests=1` and `GET $MANAGER_URL/api/v1/perf/crash?id=`, with the machine key in `X-Agent-Manager-Key`. If `perf` is an unknown command, the PC has an older `agentctl.js`: download it again as `$MANAGER_URL/instructions.md` describes.
 
 ## What is kept
 
-A session and its totals are kept for a year after it last sent something. The samples behind its charts are kept for 30 days.
+A session and its totals are kept for a year after it last sent something, and so are crashes. The samples behind its charts are kept for 30 days.
 
 ## Check that it works
 
