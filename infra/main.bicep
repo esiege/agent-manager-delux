@@ -1,6 +1,7 @@
 // Agent Manager Delux in Azure: a Static Web App (React UI + managed Functions API),
-// Cosmos DB serverless for storage, a storage account for blocker screenshots and videos,
-// and Application Insights for the app's own telemetry.
+// Cosmos DB serverless for storage, a storage account for feedback pictures, clips and sounds,
+// Azure Communication Services for feedback emails, and Application Insights for the app's own
+// telemetry.
 // Deploy with scripts/deploy.ps1, which also builds and uploads the app.
 
 @description('Name prefix for every resource.')
@@ -113,6 +114,33 @@ resource mediaLifecycle 'Microsoft.Storage/storageAccounts/managementPolicies@20
   }
 }
 
+// Feedback emails: Azure Communication Services with an Azure-managed sender domain
+// (DoNotReply@<random>.azurecomm.net), so there's no domain to own or verify.
+resource emailService 'Microsoft.Communication/emailServices@2023-04-01' = {
+  name: '${name}-email-${suffix}'
+  location: 'global'
+  properties: { dataLocation: 'United States' }
+}
+
+resource emailDomain 'Microsoft.Communication/emailServices/domains@2023-04-01' = {
+  parent: emailService
+  name: 'AzureManagedDomain'
+  location: 'global'
+  properties: {
+    domainManagement: 'AzureManaged'
+    userEngagementTracking: 'Disabled'
+  }
+}
+
+resource communication 'Microsoft.Communication/communicationServices@2023-04-01' = {
+  name: '${name}-comm-${suffix}'
+  location: 'global'
+  properties: {
+    dataLocation: 'United States'
+    linkedDomains: [emailDomain.id]
+  }
+}
+
 resource workspace 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
   name: '${name}-logs-${suffix}'
   location: location
@@ -149,6 +177,9 @@ resource siteSettings 'Microsoft.Web/staticSites/config@2023-12-01' = {
     BLOB_ACCOUNT: storage.name
     BLOB_KEY: storage.listKeys().keys[0].value
     BLOB_CONTAINER: mediaContainer.name
+    EMAIL_ENDPOINT: 'https://${communication.properties.hostName}'
+    EMAIL_KEY: communication.listKeys().primaryKey
+    EMAIL_SENDER: 'DoNotReply@${emailDomain.properties.mailFromSenderDomain}'
     OWNER_LOGINS: ownerLogins
     PUBLIC_URL: 'https://${site.properties.defaultHostname}'
     APPLICATIONINSIGHTS_CONNECTION_STRING: insights.properties.ConnectionString
