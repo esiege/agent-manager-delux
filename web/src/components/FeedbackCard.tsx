@@ -19,6 +19,7 @@ import {
   type FeedbackRatingQuestion,
 } from '@agent-manager-delux/shared';
 import {
+  ActionIcon,
   Anchor,
   Badge,
   Button,
@@ -41,6 +42,8 @@ import {
 import {
   IconArrowBackUp,
   IconCheck,
+  IconChevronLeft,
+  IconChevronRight,
   IconDeviceDesktop,
   IconHash,
   IconMail,
@@ -131,9 +134,24 @@ function Clip({ m, mediaUrl, caption }: { m: FeedbackMedia; mediaUrl: MediaUrl; 
 }
 
 function MediaStrip({ items, mediaUrl, captions }: { items: FeedbackMedia[]; mediaUrl: MediaUrl; captions: Record<string, string> }) {
-  const [open, setOpen] = useState<FeedbackMedia | null>(null);
-  if (items.length === 0) return null;
+  // The picture open full size, by its place among the pictures; the arrows page through them.
+  const [openAt, setOpenAt] = useState<number | null>(null);
   const images = items.filter((m) => m.kind === 'image');
+  const open = openAt !== null ? (images[openAt] ?? null) : null;
+  const many = images.length > 1;
+  const step = (by: number) => setOpenAt((i) => (i === null ? i : (i + by + images.length) % images.length));
+  useEffect(() => {
+    if (openAt === null || !many) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowLeft') step(-1);
+      else if (e.key === 'ArrowRight') step(1);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // step only reads images.length, which `many` covers.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openAt !== null, many, images.length]);
+  if (items.length === 0) return null;
   const clips = items.filter((m) => m.kind !== 'image');
   const caption = (m: FeedbackMedia) => (m.name ? captions[m.name] : undefined);
   // One picture shows large; several show as a row of thumbnails, each with its caption.
@@ -145,10 +163,10 @@ function MediaStrip({ items, mediaUrl, captions }: { items: FeedbackMedia[]; med
       ))}
       {images.length > 0 && (
         <Group gap="xs" wrap="wrap" align="flex-start">
-          {images.map((m) => (
+          {images.map((m, i) => (
             <Stack key={m.id} gap={2} className="am-feedback-figure" data-single={single || undefined}>
               <UnstyledButton
-                onClick={() => setOpen(m)}
+                onClick={() => setOpenAt(i)}
                 className="am-feedback-thumb"
                 data-single={single || undefined}
                 aria-label={`Open ${caption(m) ?? m.name ?? 'picture'} full size`}
@@ -160,13 +178,32 @@ function MediaStrip({ items, mediaUrl, captions }: { items: FeedbackMedia[]; med
           ))}
         </Group>
       )}
-      <Modal opened={open !== null} onClose={() => setOpen(null)} size="auto" title={open ? (caption(open) ?? open.name ?? 'Picture') : ''} centered>
-        {open && (
+      <Modal opened={open !== null} onClose={() => setOpenAt(null)} size="auto" title={open ? (caption(open) ?? open.name ?? 'Picture') : ''} centered>
+        {open && openAt !== null && (
           <Stack gap="xs" align="center">
-            <img className="am-feedback-full" src={mediaUrl(open.id)} alt={caption(open) ?? open.name ?? 'Picture'} />
-            <Anchor href={mediaUrl(open.id)} target="_blank" rel="noopener noreferrer" size="sm">
-              Open in a new tab
-            </Anchor>
+            <div className="am-feedback-viewer">
+              <img className="am-feedback-full" src={mediaUrl(open.id)} alt={caption(open) ?? open.name ?? 'Picture'} />
+              {many && (
+                <>
+                  <ActionIcon className="am-feedback-page" data-side="prev" variant="filled" color="dark" radius="xl" size="lg" onClick={() => step(-1)} aria-label="Previous picture">
+                    <IconChevronLeft size={20} />
+                  </ActionIcon>
+                  <ActionIcon className="am-feedback-page" data-side="next" variant="filled" color="dark" radius="xl" size="lg" onClick={() => step(1)} aria-label="Next picture">
+                    <IconChevronRight size={20} />
+                  </ActionIcon>
+                </>
+              )}
+            </div>
+            <Group gap="md">
+              {many && (
+                <Text size="sm" c="dimmed">
+                  {openAt + 1} of {images.length}
+                </Text>
+              )}
+              <Anchor href={mediaUrl(open.id)} target="_blank" rel="noopener noreferrer" size="sm">
+                Open in a new tab
+              </Anchor>
+            </Group>
           </Stack>
         )}
       </Modal>

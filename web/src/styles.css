@@ -780,6 +780,32 @@
   max-width: min(90vw, 1600px);
   max-height: 80vh;
   object-fit: contain;
+  display: block;
+}
+
+/* The full-size picture, with paging arrows over its sides. */
+.am-feedback-viewer {
+  position: relative;
+}
+
+.am-feedback-viewer .am-feedback-page {
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  transform: translateY(-50%);
+  opacity: 0.8;
+}
+
+.am-feedback-page:hover {
+  opacity: 1;
+}
+
+.am-feedback-page[data-side='prev'] {
+  left: 8px;
+}
+
+.am-feedback-page[data-side='next'] {
+  right: 8px;
 }
 
 .am-feedback-details > :first-child {
