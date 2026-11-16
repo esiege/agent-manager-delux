@@ -23,6 +23,7 @@ import {
   IconMessageQuestion,
   IconRadar2,
   IconRobot,
+  IconRocket,
 } from '@tabler/icons-react';
 import { useEffect, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router';
@@ -36,6 +37,7 @@ const TABS = [
   { to: '/', label: 'Overview', icon: IconRadar2 },
   { to: '/dashboard', label: 'Dashboard', icon: IconLayoutDashboard },
   { to: '/feedback', label: 'Feedback', icon: IconMessageQuestion },
+  { to: '/releases', label: 'Releases', icon: IconRocket },
   { to: '/reporting', label: 'Reporting', icon: IconChartHistogram },
   { to: '/performance', label: 'Game', icon: IconGauge },
   { to: '/agents', label: 'Agents', icon: IconRobot },

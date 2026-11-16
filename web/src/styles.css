@@ -735,6 +735,46 @@
   }
 }
 
+/* Releases: a card per release; the newest of each game has a green edge. */
+.am-release {
+  transition: box-shadow 300ms;
+  border-left: 4px solid var(--mantine-color-default-border);
+}
+
+.am-release[data-latest] {
+  border-left-color: var(--mantine-color-green-filled);
+}
+
+.am-release[data-highlighted] {
+  box-shadow: 0 0 0 2px var(--mantine-color-blue-filled);
+}
+
+.am-release-notes > :first-child {
+  margin-top: 0;
+}
+
+/* Change notes often use # headings for "Added" and "Fixed": keep them section-sized, not page-sized. */
+.am-release-notes :is(h1, h2, h3, h4) {
+  font-size: var(--mantine-font-size-md);
+  margin-top: var(--mantine-spacing-sm);
+  margin-bottom: var(--mantine-spacing-xs);
+}
+
+.am-release-notes ul {
+  margin-block: 0;
+}
+
+.am-release-notes[data-folded] {
+  max-height: 16em;
+  overflow: hidden;
+  mask-image: linear-gradient(to bottom, black 60%, transparent);
+}
+
+.am-release-comment {
+  border-left: 3px solid var(--mantine-color-default-border);
+  padding-left: var(--mantine-spacing-sm);
+}
+
 /* Feedback: a panel per request waiting on you, a smaller one per request the agent is working on. */
 .am-feedback {
   transition: box-shadow 300ms;

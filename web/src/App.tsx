@@ -11,12 +11,13 @@ import { NotFoundPage } from './pages/NotFoundPage';
 import { OverviewPage } from './pages/OverviewPage';
 import { SettingsPage } from './pages/SettingsPage';
 
-// The Markdown renderer is only needed on the Instructions and Feedback tabs.
+// The Markdown renderer is only needed on the Instructions, Feedback and Releases tabs.
 // The charts are only needed on the Reporting and Game tabs.
 const ReportingPage = lazy(() => import('./pages/ReportingPage').then((m) => ({ default: m.ReportingPage })));
 const PerformancePage = lazy(() => import('./pages/PerformancePage').then((m) => ({ default: m.PerformancePage })));
 const PerfSessionPage = lazy(() => import('./pages/PerfSessionPage').then((m) => ({ default: m.PerfSessionPage })));
 const FeedbackPage = lazy(() => import('./pages/FeedbackPage').then((m) => ({ default: m.FeedbackPage })));
+const ReleasesPage = lazy(() => import('./pages/ReleasesPage').then((m) => ({ default: m.ReleasesPage })));
 const InstructionsPage = lazy(() => import('./pages/InstructionsPage').then((m) => ({ default: m.InstructionsPage })));
 
 /** The Feedback tab was Blockers: old alert links (/blockers?id=…) land on the same request. */
@@ -41,6 +42,14 @@ export function App() {
             }
           />
           <Route path="blockers" element={<BlockersRedirect />} />
+          <Route
+            path="releases"
+            element={
+              <Suspense fallback={<TableSkeleton rows={10} />}>
+                <ReleasesPage />
+              </Suspense>
+            }
+          />
           <Route
             path="reporting"
             element={
