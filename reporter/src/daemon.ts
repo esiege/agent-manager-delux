@@ -11,6 +11,7 @@ import { logLine, readJsonFile, writeJsonFile } from './files';
 import { subagentAgentId } from './hook';
 import { checkInbox } from './inbox';
 import { paths } from './paths';
+import { agentctlState, fileSha256, selfUpdate, settleAttempt, shouldUpdate } from './selfupdate';
 import { isAlive } from './proc';
 import { post } from './send';
 import { listSessions, listSubagents, pruneSessions, removeSubagent, writeSession, type SessionRecord } from './sessions';
@@ -27,9 +28,9 @@ interface DaemonState {
 }
 
 /** Starts the heartbeat in the background unless one is already beating. Cheap: hooks call it. */
-export function ensureDaemon(scriptPath: string) {
+export function ensureDaemon(scriptPath: string, opts: { force?: boolean } = {}) {
   const d = readJsonFile<DaemonState>(paths.daemon());
-  if (d && isAlive(d.pid) && Date.now() - Date.parse(d.beatAt) < STALE_BEAT_MS) return;
+  if (!opts.force && d && isAlive(d.pid) && Date.now() - Date.parse(d.beatAt) < STALE_BEAT_MS) return;
   spawn(process.execPath, [scriptPath, 'daemon'], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
 }
 
@@ -79,7 +80,7 @@ function fullReport(config: Config, s: SessionRecord, state: ReportInput['state'
 }
 
 /** One beat: notice closed windows, then send the list of live sessions. */
-export async function beat(config: Config): Promise<number> {
+export async function beat(config: Config, runningSha: string | null = null): Promise<number> {
   const now = new Date().toISOString();
   const live: SessionRecord[] = [];
   for (const s of listSessions()) {
@@ -97,7 +98,12 @@ export async function beat(config: Config): Promise<number> {
   }
 
   const agentIds = live.flatMap((s) => [s.agentId, ...listSubagents(s.sessionId).map((sub) => subagentAgentId(s, sub.subagentId))]);
-  const res = await post<HeartbeatResponse>(config, '/heartbeat', { machine: config.machine, kind: 'claude-code', agentIds });
+  const res = await post<HeartbeatResponse>(config, '/heartbeat', {
+    machine: config.machine,
+    kind: 'claude-code',
+    agentIds,
+    ...(runningSha ? { agentctl: agentctlState(config, runningSha) } : {}),
+  });
 
   // Sessions the manager has never heard of (its first report failed, or it started before
   // agentctl was installed): send everything about them now.
@@ -105,6 +111,8 @@ export async function beat(config: Config): Promise<number> {
     const s = live.find((x) => x.agentId === id);
     if (s) await post(config, '/report', fullReport(config, s, 'idle', 'Reconnected')).catch((e: Error) => logLine(`heartbeat: ${e.message}`));
   }
+  // The owner asked every PC to update: install the new agentctl, which restarts this heartbeat.
+  if (runningSha && shouldUpdate(config, res.update, runningSha)) await selfUpdate(res.update);
   return live.length;
 }
 
@@ -112,13 +120,16 @@ export async function runDaemon(): Promise<void> {
   if (!takeLock()) return;
   process.on('exit', releaseLock);
   logLine('heartbeat started');
+  // The agentctl this heartbeat runs, hashed once: the file may be replaced while it runs.
+  const runningSha = fileSha256(process.argv[1] ?? paths.script());
+  if (runningSha) settleAttempt(runningSha);
 
   let idleSince: number | null = null;
   let lastPrune = 0;
   for (;;) {
     writeJsonFile(paths.daemon(), { pid: process.pid, beatAt: new Date().toISOString() } satisfies DaemonState);
     try {
-      const live = await beat(loadConfig());
+      const live = await beat(loadConfig(), runningSha);
       idleSince = live > 0 ? null : (idleSince ?? Date.now());
     } catch (e) {
       logLine(`heartbeat: ${(e as Error).message}`);

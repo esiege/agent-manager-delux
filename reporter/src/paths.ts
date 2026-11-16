@@ -11,6 +11,8 @@ export const paths = {
   script: () => join(home(), 'agentctl.js'),
   sessions: () => join(home(), 'sessions'),
   daemon: () => join(home(), 'daemon.json'),
+  /** The last self-update agentctl tried (selfupdate.ts). */
+  update: () => join(home(), 'update.json'),
   log: () => join(home(), 'reporter.log'),
   claudeSettings: () => process.env.CLAUDE_SETTINGS_PATH || join(homedir(), '.claude', 'settings.json'),
 };

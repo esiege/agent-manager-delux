@@ -16,6 +16,11 @@ export interface Config {
    * sessions from Agent Manager Delux. Off unless turned on here; the server can't turn it on.
    */
   messages?: boolean;
+  /**
+   * False after `agentctl install --no-auto-update`: this PC ignores the owner's "Update all PCs".
+   * On unless turned off.
+   */
+  autoUpdate?: boolean;
 }
 
 export class ConfigError extends Error {}
@@ -37,5 +42,6 @@ export function loadConfig(): Config {
     machine: saved.machine || defaultMachineName(),
     ...(saved.prompts === false ? { prompts: false } : {}),
     ...(saved.messages === true ? { messages: true } : {}),
+    ...(saved.autoUpdate === false ? { autoUpdate: false } : {}),
   };
 }

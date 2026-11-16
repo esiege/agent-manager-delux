@@ -38,6 +38,7 @@ import {
 } from './feedback';
 import { ConfigError, defaultMachineName, loadConfig, type Config } from './config';
 import { ensureDaemon, runDaemon } from './daemon';
+import { fileSha256, lastAttempt } from './selfupdate';
 import { logLine, readJsonFile, writeJsonFile } from './files';
 import { commitInfo, findRepoRoot, hasUncommittedChanges, projectName, readBranch, readHead } from './git';
 import { planHook, type HookInput, type PlannedReport } from './hook';
@@ -672,12 +673,15 @@ async function installCommand(flags: Record<string, string>) {
   if (!key) throw new UsageError('No machine key: make one on the Keys tab, then set AGENT_MANAGER_KEY or pass --key');
   if ('allow-messages' in flags && 'no-messages' in flags) throw new UsageError('Pass --allow-messages or --no-messages, not both');
   const messages = 'allow-messages' in flags ? true : 'no-messages' in flags ? false : saved?.messages === true;
+  if ('auto-update' in flags && 'no-auto-update' in flags) throw new UsageError('Pass --auto-update or --no-auto-update, not both');
+  const autoUpdate = 'auto-update' in flags ? true : 'no-auto-update' in flags ? false : saved?.autoUpdate !== false;
   const config: Config = {
     url,
     key,
     machine,
     ...(saved?.prompts === false ? { prompts: false } : {}),
     ...(messages ? { messages: true } : {}),
+    ...(autoUpdate ? {} : { autoUpdate: false }),
   };
 
   // Check the URL and key before touching anything.
@@ -698,11 +702,18 @@ async function installCommand(flags: Record<string, string>) {
   // A heartbeat still running the old agentctl stops; the next hook event starts the new one.
   const daemon = readJsonFile<{ pid: number }>(paths.daemon());
   if (daemon && isAlive(daemon.pid)) process.kill(daemon.pid);
+  // A self-update restarts the heartbeat now, so open sessions don't wait for their next hook.
+  if ('after-update' in flags) {
+    // Wait for the old one to let go of its lock, so the new one doesn't think it's still beating.
+    for (let i = 0; i < 50 && daemon && isAlive(daemon.pid); i++) await new Promise((r) => setTimeout(r, 100));
+    ensureDaemon(paths.script(), { force: true });
+  }
   console.log(`Agent Manager Delux reporting is set up for ${machine} (instructions version ${INSTRUCTIONS_VERSION}, ${INSTRUCTIONS_UPDATED}).
   Config:    ${paths.config()}
   agentctl:  ${paths.script()}
   Hooks:     ${paths.claudeSettings()}${backup ? `\n  Backup:    ${backup}` : ''}
   Messages:  ${messages ? 'on: you can send messages to these sessions from Agent Manager Delux' : 'off (--allow-messages turns them on)'}
+  Updates:   ${autoUpdate ? 'on: "Update all PCs" in Agent Manager Delux updates agentctl here (--no-auto-update turns it off)' : 'off: update with the update sentence (--auto-update turns them on)'}
 New Claude Code sessions on this PC now appear at ${url}/agents within a few seconds.
 Sessions that are already open start reporting once Claude Code reloads its settings.`);
 }
@@ -810,6 +821,13 @@ async function doctorCommand() {
   } else {
     lines.push('Messages:   off (agentctl install --allow-messages turns them on)');
   }
+  const attempt = lastAttempt();
+  lines.push(
+    `Updates:    ${config?.autoUpdate === false ? 'off (agentctl install --auto-update turns them on)' : 'on: "Update all PCs" updates this PC'}` +
+      `; running ${fileSha256(paths.script())?.slice(0, 12) ?? '?'}` +
+      (attempt ? `
+            last: ${attempt.status} ${attempt.at}${attempt.error ? ` (${attempt.error})` : ''}` : ''),
+  );
   if (config) {
     try {
       await post(config, '/report', { agentId: `${config.machine}/agentctl`, kind: 'other', machine: config.machine, test: true });
