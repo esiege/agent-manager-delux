@@ -15,6 +15,7 @@ import {
   type MachineRecord,
   type PerfSample,
   type PerfSession,
+  type Release,
 } from '@agent-manager-delux/shared';
 import {
   FEEDBACK_RETENTION_SECONDS,
@@ -48,6 +49,8 @@ export interface Snapshot {
   /** Missing in files saved before self-updates existed. */
   machines?: MachineRecord[];
   updateRequest?: AgentctlUpdateRequest | null;
+  /** Missing in files saved before releases existed. */
+  releases?: Release[];
 }
 
 export class MemoryStore implements Store {
@@ -61,6 +64,7 @@ export class MemoryStore implements Store {
   private feedback = new Map<string, Feedback>();
   private machines = new Map<string, MachineRecord>();
   private updateRequest: AgentctlUpdateRequest | null = null;
+  private releases = new Map<string, Release>();
 
   constructor(
     private readonly file?: string,
@@ -78,6 +82,7 @@ export class MemoryStore implements Store {
       for (const b of snap.blockers ?? []) this.feedback.set(b.id, feedbackFromStored(b));
       for (const m of snap.machines ?? []) this.machines.set(machineKey(m), m);
       this.updateRequest = snap.updateRequest ?? null;
+      for (const r of snap.releases ?? []) this.releases.set(r.id, r);
       this.prune();
     }
   }
@@ -107,6 +112,7 @@ export class MemoryStore implements Store {
       blockers: [...this.feedback.values()],
       machines: [...this.machines.values()],
       updateRequest: this.updateRequest,
+      releases: [...this.releases.values()],
     };
     writeFileSync(this.file, JSON.stringify(snap));
   }
@@ -248,6 +254,21 @@ export class MemoryStore implements Store {
         .sort((a, b) => a.t - b.t)
         .slice(-limit),
     );
+  }
+
+  async getRelease(id: string) {
+    return structuredClone(this.releases.get(id) ?? null);
+  }
+  async putRelease(release: Release) {
+    this.releases.set(release.id, structuredClone(release));
+    this.save();
+  }
+  async listReleases(limit: number) {
+    return structuredClone([...this.releases.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, limit));
+  }
+  async deleteRelease(id: string) {
+    this.releases.delete(id);
+    this.save();
   }
 
   async putMachine(record: MachineRecord) {

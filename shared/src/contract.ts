@@ -120,6 +120,14 @@ export const LIMITS = {
   feedbackQuestionNoteLength: 2000,
   /** Files the owner attaches to an answer. */
   feedbackAnswerMedia: 6,
+  /** A release: its version ("v0.20.0"), its name, its change notes (Markdown) and the agent's comments. */
+  releaseVersionLength: 80,
+  releaseTitleLength: 200,
+  releaseNotesLength: 20000,
+  releaseCommentLength: 4000,
+  /** Extra links on a release (downloads, store pages), and each one's label. */
+  releaseLinks: 8,
+  releaseLinkLabelLength: 80,
 } as const;
 
 /** Owner calls that change something must carry this header, which another site can't add (CSRF). */
@@ -332,7 +340,7 @@ export interface AgentView extends Agent {
 }
 
 /** "blocker" is on events from before feedback replaced blockers. */
-export type AgentEventType = 'report' | 'state' | 'action' | 'result' | 'turn' | 'message' | 'blocker' | 'feedback';
+export type AgentEventType = 'report' | 'state' | 'action' | 'result' | 'turn' | 'message' | 'blocker' | 'feedback' | 'release';
 
 export interface AgentEvent {
   id: string;
@@ -1064,6 +1072,67 @@ export interface PerfSessionDetailResponse {
   /** Oldest first. Empty once the samples have aged out. */
   samples: PerfSample[];
   /** True when the session has more samples than one answer holds: these are the latest. */
+  truncated: boolean;
+}
+
+// ---- Releases ----
+
+/** A link that goes with a release besides its main one: a download, a store page. */
+export interface ReleaseLink {
+  label: string;
+  url: string;
+}
+
+/** POST /api/v1/releases, with a machine key. Sending the same game and version again updates it. */
+export interface ReleaseInput {
+  agentId: string;
+  /** "v0.20.0", "1.4", "2026-11-16 nightly". */
+  version: string;
+  /** Where the release is: its GitHub release, store page or download. */
+  url: string;
+  /** A name for it ("The Winter Update"). */
+  title?: string | null;
+  /** The change notes, in Markdown. */
+  notes?: string | null;
+  /** What the agent has to say about it: what to try first, what's known to be rough. */
+  comment?: string | null;
+  links?: ReleaseLink[];
+  /** The game or app released. Defaults to the agent's project. */
+  project?: string | null;
+  test?: boolean;
+}
+
+export interface Release {
+  /** From the game and version, so sending them again updates this release. */
+  id: string;
+  agentId: string;
+  agentName: string;
+  kind: AgentKind;
+  /** The game or app; null when neither the release nor the agent named one. */
+  project: string | null;
+  machine: string;
+  version: string;
+  title: string | null;
+  url: string;
+  links: ReleaseLink[];
+  notes: string | null;
+  comment: string | null;
+  createdAt: string;
+  updatedAt: string;
+  keyName: string;
+}
+
+export interface ReleaseCreateResponse extends WriteResponse<Release> {
+  /** True when this game and version were sent before, so this updated it. */
+  updated: boolean;
+  releaseUrl: string;
+}
+
+/** GET /api/v1/releases, as the owner or with a machine key. Newest first. */
+export interface ReleasesResponse {
+  now: string;
+  releases: Release[];
+  /** True when there are more than one answer holds: these are the newest. */
   truncated: boolean;
 }
 

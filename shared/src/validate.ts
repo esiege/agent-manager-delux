@@ -24,6 +24,8 @@ import {
   type PerfSampleInput,
   type PerfSamplesInput,
   type PerfSessionInput,
+  type ReleaseInput,
+  type ReleaseLink,
   type ReportedState,
   type ReportInput,
   type TokenUsage,
@@ -565,6 +567,51 @@ export function validateAlertSubscription(body: unknown): Result<AlertSubscripti
     if (extra.length) r.warnings.push(`Unknown field(s) ${extra.join(', ')} were ignored`);
     const value: AlertSubscriptionInput = { name, channel, target, events: events as AlertEvent[], projects, enabled: enabled ?? true };
     if (id) value.id = id;
+    return value;
+  });
+}
+
+const HTTP_URL = /^https?:\/\/\S+$/i;
+
+function readReleaseLink(raw: unknown, i: number): ReleaseLink {
+  const what = `links[${i}]`;
+  // A bare URL is fine too: its host is the label.
+  const r = typeof raw === 'string' ? { url: raw } : raw;
+  if (!isObject(r)) throw new Invalid(`${what} must be {"label": "<text>", "url": "<https URL>"} or a URL`);
+  const url = typeof r.url === 'string' ? r.url.trim() : '';
+  if (!HTTP_URL.test(url) || url.length > LIMITS.linkLength) throw new Invalid(`${what}.url must be an http or https URL of at most ${LIMITS.linkLength} characters`);
+  let label = typeof r.label === 'string' ? r.label.trim() : '';
+  if (!label) label = new URL(url).host;
+  if (label.length > LIMITS.releaseLinkLabelLength) throw new Invalid(`${what}.label is longer than ${LIMITS.releaseLinkLabelLength} characters`);
+  return { label, url };
+}
+
+/** A release an agent sends: a version, its link, and optionally a name, change notes, comments and more links. */
+export function validateRelease(body: unknown): Result<ReleaseInput> {
+  return run(body, 'a release', (r) => {
+    const agentId = r.requiredString('agentId', LIMITS.idLength);
+    const version = r.requiredString('version', LIMITS.releaseVersionLength);
+    const url = r.requiredString('url', LIMITS.linkLength);
+    if (!HTTP_URL.test(url)) throw new Invalid('url must be an http or https URL: where the release is (its GitHub release, store page or download)');
+    const value: ReleaseInput = { agentId, version, url };
+    const text = (key: 'title' | 'notes' | 'comment' | 'project', max: number) => {
+      const v = r.optionalString(key, max)?.trim();
+      if (v) value[key] = v;
+    };
+    text('title', LIMITS.releaseTitleLength);
+    text('notes', LIMITS.releaseNotesLength);
+    text('comment', LIMITS.releaseCommentLength);
+    text('project', LIMITS.idLength);
+    const links = r.get('links');
+    if (links !== undefined && links !== null) {
+      if (!Array.isArray(links)) throw new Invalid('links must be a list of {"label", "url"}');
+      if (links.length > LIMITS.releaseLinks) throw new Invalid(`links holds at most ${LIMITS.releaseLinks}`);
+      value.links = links.map(readReleaseLink);
+    }
+    const test = r.optionalBool('test');
+    if (test !== undefined) value.test = test;
+    const extra = r.unknownKeys();
+    if (extra.length) r.warnings.push(`Unknown field(s) ${extra.join(', ')} were ignored`);
     return value;
   });
 }

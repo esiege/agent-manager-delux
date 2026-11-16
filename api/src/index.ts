@@ -14,6 +14,7 @@ import { ackMessage, inbox, sendMessage } from './handlers/messages';
 import { hideAgents } from './handlers/hide';
 import { reporting } from './handlers/reporting';
 import { perfSamples, perfSession, perfSessionDetail, perfSessions } from './handlers/perf';
+import { createRelease, deleteRelease, listReleases } from './handlers/releases';
 import {
   addAnswerMedia,
   addFeedbackMedia,
@@ -78,6 +79,10 @@ register('perfSession', 'POST', 'v1/perf/session', perfSession);
 register('perfSamples', 'POST', 'v1/perf/samples', perfSamples);
 register('perfSessions', 'GET', 'v1/perf/sessions', perfSessions);
 register('perfSessionDetail', 'GET', 'v1/perf/session', perfSessionDetail);
+
+register('createRelease', 'POST', 'v1/releases', createRelease);
+register('listReleases', 'GET', 'v1/releases', listReleases);
+register('deleteRelease', 'POST', 'v1/releases/delete', deleteRelease);
 
 register('listKeys', 'GET', 'v1/keys', listKeys);
 register('createKey', 'POST', 'v1/keys', createKey);

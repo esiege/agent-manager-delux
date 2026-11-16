@@ -1,7 +1,8 @@
 // Cosmos DB (NoSQL API, serverless) store used in Azure.
 // Containers: agents (/id), keys (/id), alerts (/id), events (/agentId, 30-day TTL),
 // messages (/machine, 1-day TTL), perfSessions (/id, 1-year TTL), perfSamples (/sessionId, 30-day TTL),
-// blockers (/id, 90-day TTL from the last change; feedback requests, named for the blockers they replaced).
+// blockers (/id, 90-day TTL from the last change; feedback requests, named for the blockers they replaced),
+// releases (/id, kept until deleted).
 // infra/main.bicep creates the same containers; ensure() creates them too when they're missing.
 
 import { createHash } from 'node:crypto';
@@ -19,6 +20,7 @@ import {
   type Feedback,
   type PerfSample,
   type PerfSession,
+  type Release,
 } from '@agent-manager-delux/shared';
 import {
   FEEDBACK_RETENTION_SECONDS,
@@ -56,6 +58,8 @@ const CONTAINERS = {
   machines: { partitionKey: '/id', defaultTtl: 90 * 86_400 },
   // Single documents of settings, such as the owner's update request.
   settings: { partitionKey: '/id' },
+  // Releases agents announce. Small, and the history is the point: kept until the owner deletes one.
+  releases: { partitionKey: '/id' },
 } as const;
 
 type Name = keyof typeof CONTAINERS;
@@ -329,6 +333,23 @@ export class CosmosStore implements Store {
       sessionId,
     );
     return latest.reverse();
+  }
+
+  getRelease(id: string) {
+    return this.read<Release>('releases', id, id);
+  }
+  async putRelease(release: Release) {
+    await (await this.c('releases')).items.upsert(release);
+  }
+  listReleases(limit: number) {
+    return this.query<Release>('releases', 'SELECT TOP @limit * FROM c ORDER BY c.createdAt DESC', [{ name: '@limit', value: limit }]);
+  }
+  async deleteRelease(id: string) {
+    try {
+      await (await this.c('releases')).item(id, id).delete();
+    } catch (e) {
+      if ((e as { code?: number }).code !== 404) throw e; // already gone
+    }
   }
 
   async putMachine(record: MachineRecord) {

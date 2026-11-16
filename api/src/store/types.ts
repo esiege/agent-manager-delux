@@ -15,6 +15,7 @@ import {
   type MessageStatus,
   type PerfSample,
   type PerfSession,
+  type Release,
 } from '@agent-manager-delux/shared';
 
 /** A machine key as stored: the key's metadata plus a SHA-256 hash of the secret. */
@@ -102,6 +103,12 @@ export interface Store {
   addPerfSamples(samples: PerfSample[]): Promise<PerfSample[]>;
   /** The session's latest `limit` samples, oldest first. */
   listPerfSamples(sessionId: string, limit: number): Promise<PerfSample[]>;
+
+  getRelease(id: string): Promise<Release | null>;
+  putRelease(release: Release): Promise<void>;
+  /** Newest first (by when it was first sent). */
+  listReleases(limit: number): Promise<Release[]>;
+  deleteRelease(id: string): Promise<void>;
 
   /** Each PC's agentctl, from its latest heartbeat. One record per machine name and kind. */
   putMachine(record: MachineRecord): Promise<void>;

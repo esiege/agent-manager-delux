@@ -26,7 +26,7 @@ import {
 } from '../store/types';
 
 /** The containers copied, in order. Messages are left out: they're only kept a day. */
-export const CONTAINERS = ['keys', 'alerts', 'agents', 'blockers', 'perfSessions', 'perfSamples', 'events'] as const;
+export const CONTAINERS = ['keys', 'alerts', 'agents', 'blockers', 'perfSessions', 'perfSamples', 'events', 'releases'] as const;
 export type DataContainer = (typeof CONTAINERS)[number];
 
 export interface CloudPlan {
@@ -68,6 +68,7 @@ export function toCloud(snap: Snapshot, now = new Date()): CloudPlan {
     events: snap.events.flatMap((e) =>
       withTtl(eventDoc(e), e.receivedAt, (isReportingEvent(e) ? REPORTING_RETENTION_DAYS : RETENTION_DAYS) * DAY),
     ),
+    releases: (snap.releases ?? []).map((r) => ({ ...r })),
   };
   return { docs, expired };
 }
@@ -91,6 +92,7 @@ export function toLocal(docs: Record<DataContainer, Record<string, unknown>[]>):
     perfSamples: plain('perfSamples') as unknown as NonNullable<Snapshot['perfSamples']>,
     events: plain('events') as unknown as Snapshot['events'],
     messages: [],
+    releases: plain('releases') as unknown as NonNullable<Snapshot['releases']>,
   };
 }
 
