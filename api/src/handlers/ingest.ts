@@ -17,6 +17,7 @@ import {
   type ReportResponse,
 } from '@agent-manager-delux/shared';
 import { notify, sweepLost } from '../alerts';
+import { agentctlForHeartbeat } from './agentctl';
 import { requireKey } from '../auth';
 import { fail, ok, publicOrigin, readJson, type Handler } from '../http';
 
@@ -216,11 +217,13 @@ export const heartbeat: Handler = async (req, ctx) => {
     for (const a of writes) if (a.state === 'stopped') await notify(ctx, before.get(a.id) ?? null, a, publicOrigin(req, ctx.env));
     await sweepLost(ctx, publicOrigin(req, ctx.env));
   }
+  const update = await agentctlForHeartbeat(req, ctx, input);
   const body: HeartbeatResponse = {
     ok: true,
     test: Boolean(input.test),
     stored: { alive: input.agentIds.length - unknown.length, stopped, unknown },
     warnings: result.warnings,
+    ...(update ? { update } : {}),
   };
   return ok(body);
 };

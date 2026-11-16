@@ -9,8 +9,10 @@ import {
   type AgentEvent,
   type AgentKind,
   type AgentMessage,
+  type AgentctlUpdateRequest,
   type AlertSubscription,
   type Feedback,
+  type MachineRecord,
   type PerfSample,
   type PerfSession,
 } from '@agent-manager-delux/shared';
@@ -43,6 +45,9 @@ export interface Snapshot {
    * and they're read with feedbackFromStored. Missing in files saved before blockers existed.
    */
   blockers?: Feedback[];
+  /** Missing in files saved before self-updates existed. */
+  machines?: MachineRecord[];
+  updateRequest?: AgentctlUpdateRequest | null;
 }
 
 export class MemoryStore implements Store {
@@ -54,6 +59,8 @@ export class MemoryStore implements Store {
   private perfSessions = new Map<string, PerfSession>();
   private perfSamples = new Map<string, PerfSample>();
   private feedback = new Map<string, Feedback>();
+  private machines = new Map<string, MachineRecord>();
+  private updateRequest: AgentctlUpdateRequest | null = null;
 
   constructor(
     private readonly file?: string,
@@ -69,6 +76,8 @@ export class MemoryStore implements Store {
       for (const p of snap.perfSessions ?? []) this.perfSessions.set(p.id, p);
       for (const p of snap.perfSamples ?? []) this.perfSamples.set(p.id, p);
       for (const b of snap.blockers ?? []) this.feedback.set(b.id, feedbackFromStored(b));
+      for (const m of snap.machines ?? []) this.machines.set(machineKey(m), m);
+      this.updateRequest = snap.updateRequest ?? null;
       this.prune();
     }
   }
@@ -96,6 +105,8 @@ export class MemoryStore implements Store {
       perfSessions: [...this.perfSessions.values()],
       perfSamples: [...this.perfSamples.values()],
       blockers: [...this.feedback.values()],
+      machines: [...this.machines.values()],
+      updateRequest: this.updateRequest,
     };
     writeFileSync(this.file, JSON.stringify(snap));
   }
@@ -238,4 +249,25 @@ export class MemoryStore implements Store {
         .slice(-limit),
     );
   }
+
+  async putMachine(record: MachineRecord) {
+    this.machines.set(machineKey(record), structuredClone(record));
+    this.save();
+  }
+  async listMachines() {
+    return structuredClone([...this.machines.values()]);
+  }
+
+  async getUpdateRequest() {
+    return structuredClone(this.updateRequest);
+  }
+  async putUpdateRequest(request: AgentctlUpdateRequest) {
+    this.updateRequest = structuredClone(request);
+    this.save();
+  }
 }
+
+function machineKey(m: Pick<MachineRecord, 'machine' | 'kind'>): string {
+  return `${m.kind}:${m.machine}`;
+}
+

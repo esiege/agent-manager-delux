@@ -5,11 +5,13 @@ import {
   type Agent,
   type AgentEvent,
   type AgentKind,
+  type AgentctlUpdateRequest,
   type AgentMessage,
   type AlertSubscription,
   type Feedback,
   type KeyScope,
   type MachineKey,
+  type MachineRecord,
   type MessageStatus,
   type PerfSample,
   type PerfSession,
@@ -100,4 +102,12 @@ export interface Store {
   addPerfSamples(samples: PerfSample[]): Promise<PerfSample[]>;
   /** The session's latest `limit` samples, oldest first. */
   listPerfSamples(sessionId: string, limit: number): Promise<PerfSample[]>;
+
+  /** Each PC's agentctl, from its latest heartbeat. One record per machine name and kind. */
+  putMachine(record: MachineRecord): Promise<void>;
+  listMachines(): Promise<MachineRecord[]>;
+
+  /** The owner's latest "Update all PCs", or null. */
+  getUpdateRequest(): Promise<AgentctlUpdateRequest | null>;
+  putUpdateRequest(request: AgentctlUpdateRequest): Promise<void>;
 }

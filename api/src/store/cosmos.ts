@@ -14,6 +14,8 @@ import {
   type AgentKind,
   type AgentMessage,
   type AlertSubscription,
+  type AgentctlUpdateRequest,
+  type MachineRecord,
   type Feedback,
   type PerfSample,
   type PerfSession,
@@ -50,6 +52,10 @@ const CONTAINERS = {
   perfSamples: { partitionKey: '/sessionId', defaultTtl: PERF_SAMPLE_RETENTION_SECONDS },
   // Feedback requests. The container keeps the name of the blockers they replaced.
   blockers: { partitionKey: '/id', defaultTtl: FEEDBACK_RETENTION_SECONDS },
+  // Each PC's agentctl, from its heartbeats; a PC not heard from in 90 days drops out.
+  machines: { partitionKey: '/id', defaultTtl: 90 * 86_400 },
+  // Single documents of settings, such as the owner's update request.
+  settings: { partitionKey: '/id' },
 } as const;
 
 type Name = keyof typeof CONTAINERS;
@@ -318,4 +324,26 @@ export class CosmosStore implements Store {
     );
     return latest.reverse();
   }
+
+  async putMachine(record: MachineRecord) {
+    const id = agentDocId(`${record.kind}:${record.machine}`);
+    await (await this.c('machines')).items.upsert({ ...record, id });
+  }
+  async listMachines() {
+    const docs = await this.query<MachineRecord & { id: string }>('machines', 'SELECT * FROM c', []);
+    return docs.map(({ id: _id, ...m }) => m);
+  }
+
+  async getUpdateRequest() {
+    const doc = await this.read<AgentctlUpdateRequest & { id: string }>('settings', UPDATE_REQUEST_ID, UPDATE_REQUEST_ID);
+    if (!doc) return null;
+    const { id: _id, ...request } = doc;
+    return request;
+  }
+  async putUpdateRequest(request: AgentctlUpdateRequest) {
+    await (await this.c('settings')).items.upsert({ ...request, id: UPDATE_REQUEST_ID });
+  }
 }
+
+const UPDATE_REQUEST_ID = 'agentctl-update-request';
+

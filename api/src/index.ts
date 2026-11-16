@@ -9,6 +9,7 @@ import { heartbeat, report } from './handlers/ingest';
 import { agent, agents, me } from './handlers/read';
 import { createKey, listKeys, revokeKey } from './handlers/keys';
 import { deleteAlert, listAlerts, saveAlert, sweepAlerts, testAlert } from './handlers/alerts';
+import { agentctlStatus, requestAgentctlUpdate } from './handlers/agentctl';
 import { ackMessage, inbox, sendMessage } from './handlers/messages';
 import { hideAgents } from './handlers/hide';
 import { reporting } from './handlers/reporting';
@@ -109,6 +110,9 @@ register('linkRemoveAnswerMedia', 'POST', 'v1/feedback/link/answer-media/remove'
 register('createBlocker', 'POST', 'v1/blockers', createFeedback);
 register('addBlockerMedia', 'POST', 'v1/blockers/media', addFeedbackMedia);
 register('blocker', 'GET', 'v1/blocker', legacyBlocker);
+
+register('agentctlStatus', 'GET', 'v1/agentctl', agentctlStatus);
+register('requestAgentctlUpdate', 'POST', 'v1/agentctl/update', requestAgentctlUpdate);
 
 register('sendMessage', 'POST', 'v1/messages', sendMessage);
 register('inbox', 'POST', 'v1/inbox', inbox);

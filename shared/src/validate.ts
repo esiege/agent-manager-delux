@@ -2,6 +2,7 @@
 // Small mistakes that lose nothing important (too long, unknown fields) are warnings.
 
 import {
+  AGENTCTL_UPDATE_STATUSES,
   AGENT_KINDS,
   ALERT_CHANNELS,
   ALERT_EVENTS,
@@ -10,6 +11,8 @@ import {
   PERF_SESSION_ID,
   REPORTED_STATES,
   WORK_TYPES,
+  type AgentctlState,
+  type AgentctlUpdateAttempt,
   type AgentKind,
   type AlertChannel,
   type AlertEvent,
@@ -273,14 +276,47 @@ export function validateHeartbeat(body: unknown): Result<HeartbeatInput> {
       return id;
     });
     const at = r.optionalTime('at');
+    const agentctl = readAgentctlState(r.optionalObject('agentctl'));
     const test = r.optionalBool('test');
     const extra = r.unknownKeys();
     if (extra.length) r.warnings.push(`Unknown field(s) ${extra.join(', ')} were ignored`);
     const value: HeartbeatInput = { machine, kind, agentIds: [...new Set(agentIds)] };
     if (at !== undefined) value.at = at;
+    if (agentctl) value.agentctl = agentctl;
     if (test !== undefined) value.test = test;
     return value;
   });
+}
+
+const SHA256 = /^[0-9a-f]{64}$/;
+
+function readSha(r: Reader, key: string): string {
+  const v = r.get(key);
+  if (typeof v !== 'string' || !SHA256.test(v)) throw new Invalid(`agentctl.${key} must be a SHA-256 in lowercase hex`);
+  return v;
+}
+
+function readAgentctlState(raw: Record<string, unknown> | undefined): AgentctlState | undefined {
+  if (!raw) return undefined;
+  const r = new Reader(raw, 'agentctl');
+  const state: AgentctlState = { sha256: readSha(r, 'sha256'), autoUpdate: r.optionalBool('autoUpdate') ?? true };
+  const u = r.optionalObject('update');
+  if (u) {
+    const ur = new Reader(u, 'agentctl.update');
+    const requestedAt = ur.optionalTime('requestedAt');
+    const at = ur.optionalTime('at');
+    if (!requestedAt || !at) throw new Invalid('agentctl.update needs requestedAt and at, both ISO 8601 times');
+    const update: AgentctlUpdateAttempt = {
+      requestedAt,
+      sha256: readSha(ur, 'sha256'),
+      status: ur.oneOf('status', AGENTCTL_UPDATE_STATUSES, true)!,
+      at,
+    };
+    const error = ur.optionalString('error', 300, { truncate: true });
+    if (error) update.error = error;
+    state.update = update;
+  }
+  return state;
 }
 
 // ---- Performance data, sent by games ----

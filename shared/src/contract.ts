@@ -173,7 +173,64 @@ export interface HeartbeatInput {
   kind: AgentKind;
   agentIds: string[];
   at?: string;
+  /** Sent by agentctl 6 and later: which agentctl is running, and how its last self-update went. */
+  agentctl?: AgentctlState;
   test?: boolean;
+}
+
+/** The agentctl a PC runs, as its heartbeat tells it. */
+export interface AgentctlState {
+  /** SHA-256 of the running agentctl.js, in hex. Equal to the deployed one's when up to date. */
+  sha256: string;
+  /** False when the person turned self-updates off on this PC (agentctl install --no-auto-update). */
+  autoUpdate: boolean;
+  /** The last self-update it tried, if any. */
+  update?: AgentctlUpdateAttempt;
+}
+
+export const AGENTCTL_UPDATE_STATUSES = ['updating', 'updated', 'failed'] as const;
+export type AgentctlUpdateStatus = (typeof AGENTCTL_UPDATE_STATUSES)[number];
+
+export interface AgentctlUpdateAttempt {
+  /** The update request it acted on: its requestedAt. */
+  requestedAt: string;
+  /** The agentctl it was updating to. */
+  sha256: string;
+  status: AgentctlUpdateStatus;
+  at: string;
+  /** Why it failed, in one line. */
+  error?: string;
+}
+
+/** The owner's "Update all PCs": every PC with self-updates on moves to the agentctl deployed then. */
+export interface AgentctlUpdateRequest {
+  requestedAt: string;
+  /** The deployed agentctl.js the PCs should run. */
+  sha256: string;
+  by: string;
+}
+
+/** What the manager knows about one PC's agentctl, from its heartbeats. */
+export interface MachineRecord {
+  machine: string;
+  kind: AgentKind;
+  beatAt: string;
+  agentctl: AgentctlState;
+}
+
+/** GET /api/v1/agentctl, as the owner: the deployed agentctl, the update request, and every PC. */
+export interface AgentctlStatusResponse {
+  now: string;
+  /** SHA-256 of the agentctl.js deployed with this API. Null in development builds. */
+  latest: string | null;
+  request: AgentctlUpdateRequest | null;
+  machines: (MachineRecord & { upToDate: boolean })[];
+}
+
+/** POST /api/v1/agentctl/update, as the owner. */
+export interface AgentctlUpdateResponse {
+  ok: true;
+  request: AgentctlUpdateRequest;
 }
 
 /** The report an agent gives when it finishes a piece of work. */
@@ -699,7 +756,10 @@ export interface ReportResponse extends WriteResponse<Agent> {
   agentUrl: string;
 }
 
-export interface HeartbeatResponse extends WriteResponse<{ alive: number; stopped: string[]; unknown: string[] }> {}
+export interface HeartbeatResponse extends WriteResponse<{ alive: number; stopped: string[]; unknown: string[] }> {
+  /** Present when the owner asked every PC to update and this one runs a different agentctl. */
+  update?: { requestedAt: string; sha256: string; url: string };
+}
 
 export interface AgentsResponse {
   now: string;
