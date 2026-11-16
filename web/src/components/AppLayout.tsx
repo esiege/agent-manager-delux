@@ -117,8 +117,9 @@ export function AppLayout() {
                     {label}
                   </span>
                   {to === '/feedback' && openFeedback > 0 && (
-                    <Badge size="xs" circle color="red" aria-label={`${openFeedback} waiting on you`}>
-                      {openFeedback}
+                    // A pill, not a circle: a circle cuts off counts of two digits or more.
+                    <Badge size="xs" color="red" radius="xl" px={5} miw={16} aria-label={`${openFeedback} waiting on you`} style={{ flexShrink: 0, overflow: 'visible' }}>
+                      {openFeedback > 99 ? '99+' : openFeedback}
                     </Badge>
                   )}
                 </span>
