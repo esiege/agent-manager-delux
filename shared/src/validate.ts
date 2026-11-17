@@ -670,6 +670,7 @@ export function validateRelease(body: unknown): Result<ReleaseInput> {
       if (links.length > LIMITS.releaseLinks) throw new Invalid(`links holds at most ${LIMITS.releaseLinks}`);
       value.links = links.map(readReleaseLink);
     }
+    if (r.optionalBool('clearScreenshots')) value.clearScreenshots = true;
     const test = r.optionalBool('test');
     if (test !== undefined) value.test = test;
     const extra = r.unknownKeys();

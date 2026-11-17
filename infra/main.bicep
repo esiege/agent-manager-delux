@@ -97,6 +97,13 @@ resource mediaContainer 'Microsoft.Storage/storageAccounts/blobServices/containe
   properties: { publicAccess: 'None' }
 }
 
+// Release screenshots: no lifecycle rule, they're kept until the release is deleted.
+resource releaseMediaContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-05-01' = {
+  parent: blobService
+  name: 'release-media'
+  properties: { publicAccess: 'None' }
+}
+
 // Blockers are kept 90 days after their last change (the Cosmos TTL); their files go too.
 resource mediaLifecycle 'Microsoft.Storage/storageAccounts/managementPolicies@2023-05-01' = {
   parent: storage
@@ -181,6 +188,7 @@ resource siteSettings 'Microsoft.Web/staticSites/config@2023-12-01' = {
     BLOB_ACCOUNT: storage.name
     BLOB_KEY: storage.listKeys().keys[0].value
     BLOB_CONTAINER: mediaContainer.name
+    RELEASE_BLOB_CONTAINER: releaseMediaContainer.name
     EMAIL_ENDPOINT: 'https://${communication.properties.hostName}'
     EMAIL_KEY: communication.listKeys().primaryKey
     EMAIL_SENDER: 'DoNotReply@${emailDomain.properties.mailFromSenderDomain}'

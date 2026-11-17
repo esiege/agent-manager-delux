@@ -136,6 +136,8 @@ export const LIMITS = {
   /** Extra links on a release (downloads, store pages), and each one's label. */
   releaseLinks: 8,
   releaseLinkLabelLength: 80,
+  /** Screenshots on a release (pictures, up to feedbackImageBytes each). */
+  releaseScreenshots: 6,
 } as const;
 
 /** Owner calls that change something must carry this header, which another site can't add (CSRF). */
@@ -1215,7 +1217,18 @@ export interface ReleaseInput {
   /** When it was released (ISO 8601; a date such as "2025-03-14" will do). Defaults to now, so
    *  give it when announcing an older release. */
   releasedAt?: string | null;
+  /** True removes its screenshots, to send new ones (POST /api/v1/releases/screenshot). */
+  clearScreenshots?: boolean;
   test?: boolean;
+}
+
+/** A screenshot of a release, sent after it with POST /api/v1/releases/screenshot. */
+export interface ReleaseScreenshot {
+  id: string;
+  contentType: 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif';
+  bytes: number;
+  name: string | null;
+  at: string;
 }
 
 export interface Release {
@@ -1233,6 +1246,8 @@ export interface Release {
   links: ReleaseLink[];
   notes: string | null;
   comment: string | null;
+  /** Missing on releases sent before screenshots existed: read `screenshots ?? []`. */
+  screenshots?: ReleaseScreenshot[];
   /** When it was released. Releases sent before this existed lack it: read releasedAtOf(). */
   releasedAt: string;
   /** When it was first sent here. */

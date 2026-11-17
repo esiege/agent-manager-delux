@@ -28,6 +28,8 @@ export interface Ctx {
   env: Record<string, string | undefined>;
   /** Where feedback pictures, clips and sounds go; null when none is set up. */
   media?: MediaStore | null;
+  /** Where release screenshots go: kept until the release is deleted, unlike feedback files. */
+  releaseMedia?: MediaStore | null;
 }
 
 export type Handler = (req: Req, ctx: Ctx) => Promise<Res>;

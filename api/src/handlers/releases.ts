@@ -12,10 +12,13 @@ import {
   type AgentEvent,
   type Release,
   type ReleaseCreateResponse,
+  type ReleaseScreenshot,
   type ReleasesResponse,
 } from '@agent-manager-delux/shared';
 import { requireKey, requireOwnerOrKey, requireOwnerWrite } from '../auth';
-import { HttpError, fail, ok, publicOrigin, query, readJson, type Handler } from '../http';
+import { HttpError, fail, ok, publicOrigin, query, readJson, type Ctx, type Handler } from '../http';
+import type { MediaStore } from '../store/media';
+import { fileName, looksLike, parseRange } from './feedback';
 
 const MAX_RELEASES = 500;
 const DEFAULT_RELEASES = 200;
@@ -32,6 +35,24 @@ export function releasePage(origin: string, id: string): string {
 }
 
 const mask = (v: string | null | undefined) => (v ? maskSecrets(v) : null);
+
+const SCREENSHOT_TYPES: readonly string[] = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
+
+function releaseMedia(ctx: Ctx): MediaStore {
+  if (!ctx.releaseMedia) throw new HttpError(503, "Screenshots aren't set up on this Agent Manager Delux (no BLOB_ACCOUNT); the release was kept without them");
+  return ctx.releaseMedia;
+}
+
+/** Removes screenshot files, best effort: a file left behind costs little, a failed request more. */
+async function dropScreenshots(ctx: Ctx, releaseIdValue: string, shots: readonly ReleaseScreenshot[]) {
+  if (!ctx.releaseMedia || shots.length === 0) return;
+  await Promise.all(shots.map((s) => ctx.releaseMedia!.delete(`${releaseIdValue}/${s.id}`).catch(() => {})));
+}
+
+function idParam(value: string | null | undefined): string {
+  if (typeof value !== 'string' || !/^[0-9a-f]{32}$/.test(value)) throw new HttpError(400, 'id is required: the release (its id from agentctl release --json or the answer when it was sent)');
+  return value;
+}
 
 /** POST /api/v1/releases: announce a release, or update one sent before. */
 export const createRelease: Handler = async (req, ctx) => {
@@ -65,6 +86,7 @@ export const createRelease: Handler = async (req, ctx) => {
     links: input.links ? input.links.map((l) => ({ label: maskSecrets(l.label), url: l.url })) : (existing?.links ?? []),
     notes: input.notes !== undefined ? mask(input.notes) : (existing?.notes ?? null),
     comment: input.comment !== undefined ? mask(input.comment) : (existing?.comment ?? null),
+    screenshots: input.clearScreenshots ? [] : (existing?.screenshots ?? []),
     // A resend without a date keeps the one sent before.
     releasedAt: input.releasedAt ?? (existing ? releasedAtOf(existing) : at),
     createdAt: existing?.createdAt ?? at,
@@ -83,6 +105,7 @@ export const createRelease: Handler = async (req, ctx) => {
   if (input.test) return ok(body);
 
   await ctx.store.putRelease(release);
+  if (input.clearScreenshots) await dropScreenshots(ctx, id, existing?.screenshots ?? []);
   const event: AgentEvent = {
     id: randomUUID(),
     agentId: agent.id,
@@ -110,7 +133,7 @@ export const listReleases: Handler = async (req, ctx) => {
   }
   // Read them all, then filter and order by release date here: there are few releases, a game's
   // may be old, and an old one announced today belongs further down. Older ones lack a date.
-  const found = (await ctx.store.listReleases(MAX_RELEASES)).map((r) => ({ ...r, releasedAt: releasedAtOf(r) }));
+  const found = (await ctx.store.listReleases(MAX_RELEASES)).map((r) => ({ ...r, releasedAt: releasedAtOf(r), screenshots: r.screenshots ?? [] }));
   const matching = (game ? found.filter((r) => (r.project ?? '').toLowerCase() === game) : found).sort(
     (a, b) => b.releasedAt.localeCompare(a.releasedAt) || b.createdAt.localeCompare(a.createdAt),
   );
@@ -127,6 +150,61 @@ export const deleteRelease: Handler = async (req, ctx) => {
   requireOwnerWrite(req, ctx);
   const raw = readJson(req, 4096) as { id?: unknown };
   if (typeof raw?.id !== 'string' || !/^[0-9a-f]{32}$/.test(raw.id)) throw new HttpError(400, 'id is required: the release to delete');
+  const found = await ctx.store.getRelease(raw.id);
   await ctx.store.deleteRelease(raw.id);
+  await dropScreenshots(ctx, raw.id, found?.screenshots ?? []);
   return ok({ ok: true });
+};
+
+/**
+ * POST /api/v1/releases/screenshot?id=<release>&name=<file name>: adds a screenshot to a release.
+ * The body is the picture itself (PNG, JPEG, WebP or GIF), with its Content-Type.
+ */
+export const addReleaseScreenshot: Handler = async (req, ctx) => {
+  await requireKey(req, ctx);
+  const params = query(req);
+  const id = idParam(params.get('id'));
+  const found = await ctx.store.getRelease(id);
+  if (!found) throw new HttpError(404, `No release with id ${id}`);
+  if ((found.screenshots ?? []).length >= LIMITS.releaseScreenshots) {
+    throw new HttpError(409, `A release holds at most ${LIMITS.releaseScreenshots} screenshots; send it again with clearScreenshots to replace them`);
+  }
+  const contentType = (req.headers.get('content-type') ?? '').split(';')[0]!.trim().toLowerCase();
+  if (!SCREENSHOT_TYPES.includes(contentType)) throw new HttpError(415, `Content-Type must be one of ${SCREENSHOT_TYPES.join(', ')}`);
+  const type = contentType as ReleaseScreenshot['contentType'];
+  const bytes = req.raw ?? Buffer.from(req.body, 'utf8');
+  if (bytes.length === 0) throw new HttpError(400, 'The body is empty; send the picture itself');
+  if (bytes.length > LIMITS.feedbackImageBytes) {
+    throw new HttpError(413, `The picture is ${bytes.length} bytes; the limit is ${LIMITS.feedbackImageBytes / 1024 / 1024} MB. Shrink it.`);
+  }
+  if (!looksLike(type, bytes)) throw new HttpError(415, `The file doesn't look like ${type}`);
+  const shot: ReleaseScreenshot = { id: randomUUID(), contentType: type, bytes: bytes.length, name: fileName(params.get('name')), at: ctx.now().toISOString() };
+  await releaseMedia(ctx).put(`${id}/${shot.id}`, bytes, type);
+  // Read again: two pictures sent at once must both be kept.
+  const latest = (await ctx.store.getRelease(id)) ?? found;
+  await ctx.store.putRelease({ ...latest, screenshots: [...(latest.screenshots ?? []), shot] });
+  return ok({ ok: true, test: false, stored: shot, warnings: [] }, 201);
+};
+
+/** GET /api/v1/releases/screenshot?id=<release>&shot=<id>: one screenshot, for the owner or a key. */
+export const releaseScreenshot: Handler = async (req, ctx) => {
+  await requireOwnerOrKey(req, ctx);
+  const params = query(req);
+  const id = idParam(params.get('id'));
+  const found = await ctx.store.getRelease(id);
+  const shot = found?.screenshots?.find((s) => s.id === params.get('shot'));
+  if (!shot) throw new HttpError(404, 'No such screenshot');
+  const range = parseRange(req.headers.get('range'), shot.bytes);
+  const file = await releaseMedia(ctx).get(`${id}/${shot.id}`, range ?? undefined);
+  if (!file) throw new HttpError(404, 'The screenshot is gone');
+  const headers: Record<string, string> = {
+    'content-type': shot.contentType,
+    'accept-ranges': 'bytes',
+    'cache-control': 'private, max-age=86400, immutable',
+    // Agents send these files: never let one run as a page.
+    'content-security-policy': "default-src 'none'; sandbox",
+    'content-disposition': 'inline',
+  };
+  if (range) headers['content-range'] = `bytes ${range.start}-${range.start + file.bytes.length - 1}/${file.size}`;
+  return { status: range ? 206 : 200, body: null, bytes: file.bytes, headers };
 };

@@ -4,7 +4,7 @@
 import { app, type HttpRequest, type HttpResponseInit, type InvocationContext } from '@azure/functions';
 import { guarded, type Ctx, type Handler } from './http';
 import { getStore } from './store';
-import { getMediaStore } from './store/media';
+import { getMediaStore, getReleaseMediaStore } from './store/media';
 import { heartbeat, report } from './handlers/ingest';
 import { agent, agents, me } from './handlers/read';
 import { createKey, listKeys, revokeKey } from './handlers/keys';
@@ -15,7 +15,7 @@ import { ackMessage, inbox, sendMessage } from './handlers/messages';
 import { hideAgents } from './handlers/hide';
 import { reporting } from './handlers/reporting';
 import { perfSamples, perfSession, perfSessionDetail, perfSessions } from './handlers/perf';
-import { createRelease, deleteRelease, listReleases } from './handlers/releases';
+import { addReleaseScreenshot, createRelease, deleteRelease, listReleases, releaseScreenshot } from './handlers/releases';
 import {
   addAnswerMedia,
   addFeedbackMedia,
@@ -45,7 +45,7 @@ function register(name: string, method: 'GET' | 'POST', route: string, handler: 
       const env = process.env;
       let ctx: Ctx;
       try {
-        ctx = { store: getStore(env), now: () => new Date(), env, media: getMediaStore(env) };
+        ctx = { store: getStore(env), now: () => new Date(), env, media: getMediaStore(env), releaseMedia: getReleaseMediaStore(env) };
       } catch (e) {
         invocation.error((e as Error).message);
         return { status: 500, jsonBody: { error: (e as Error).message } };
@@ -90,6 +90,8 @@ register('setMachineName', 'POST', 'v1/machine-names', setMachineName);
 register('createRelease', 'POST', 'v1/releases', createRelease);
 register('listReleases', 'GET', 'v1/releases', listReleases);
 register('deleteRelease', 'POST', 'v1/releases/delete', deleteRelease);
+register('addReleaseScreenshot', 'POST', 'v1/releases/screenshot', addReleaseScreenshot);
+register('releaseScreenshot', 'GET', 'v1/releases/screenshot', releaseScreenshot);
 
 register('listKeys', 'GET', 'v1/keys', listKeys);
 register('createKey', 'POST', 'v1/keys', createKey);

@@ -234,7 +234,7 @@ export const feedbackReady: Handler = async (req, ctx) => {
 };
 
 /** The first bytes of each type, so a file can't claim to be something it isn't. */
-function looksLike(type: FeedbackMediaType, b: Buffer): boolean {
+export function looksLike(type: FeedbackMediaType, b: Buffer): boolean {
   const ascii = (start: number, end: number) => b.subarray(start, end).toString('latin1');
   const ebml = b.subarray(0, 4).equals(Buffer.from([0x1a, 0x45, 0xdf, 0xa3]));
   switch (type) {
@@ -262,7 +262,7 @@ function looksLike(type: FeedbackMediaType, b: Buffer): boolean {
   }
 }
 
-function fileName(value: string | null): string | null {
+export function fileName(value: string | null): string | null {
   if (!value) return null;
   // eslint-disable-next-line no-control-regex
   const name = basename(value.replace(/\\/g, '/')).replace(/[\u0000-\u001f\u007f]/g, '').trim();
@@ -395,7 +395,7 @@ export const feedbackList: Handler = async (req, ctx) => {
   return ok(res);
 };
 
-function parseRange(header: string | null, size: number): MediaRange | null {
+export function parseRange(header: string | null, size: number): MediaRange | null {
   const m = /^bytes=(\d*)-(\d*)$/.exec(header?.trim() ?? '');
   if (!m || (m[1] === '' && m[2] === '')) return null;
   let start: number;

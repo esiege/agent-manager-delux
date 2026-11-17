@@ -185,6 +185,20 @@ export class BlobMediaStore implements MediaStore {
 }
 
 let media: MediaStore | undefined;
+let releaseMedia: MediaStore | undefined;
+
+/** Release screenshots: their own container (no lifecycle rule) or folder, kept until deleted. */
+export function getReleaseMediaStore(env: Record<string, string | undefined>): MediaStore | null {
+  if (releaseMedia) return releaseMedia;
+  if (env.BLOB_ACCOUNT && env.BLOB_KEY) {
+    releaseMedia = new BlobMediaStore(env.BLOB_ACCOUNT, env.BLOB_KEY, env.RELEASE_BLOB_CONTAINER || 'release-media');
+  } else if (inAzure(env)) {
+    return null;
+  } else {
+    releaseMedia = new FolderMediaStore(env.LOCAL_RELEASE_MEDIA_PATH || '.local-release-media');
+  }
+  return releaseMedia;
+}
 
 /**
  * Blob Storage when BLOB_ACCOUNT and BLOB_KEY are set. Otherwise a local folder, which is only

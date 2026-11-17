@@ -10,8 +10,9 @@ import { resetAuthState } from '../src/auth';
 import { report } from '../src/handlers/ingest';
 import { createKey } from '../src/handlers/keys';
 import { agent } from '../src/handlers/read';
-import { createRelease, deleteRelease, listReleases } from '../src/handlers/releases';
+import { addReleaseScreenshot, createRelease, deleteRelease, listReleases, releaseScreenshot } from '../src/handlers/releases';
 import { guarded, type Ctx, type Handler, type Req } from '../src/http';
+import { MemoryMediaStore } from '../src/store/media';
 import { MemoryStore } from '../src/store/memory';
 
 const OWNER = 'owner@example.com';
@@ -20,6 +21,14 @@ const SESSION = 'pc/claude/s1';
 let clock: Date;
 let ctx: Ctx;
 let key: string;
+
+const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(32, 1)]);
+
+function upload(id: string, bytes = PNG, contentType = 'image/png') {
+  const headers = new Headers({ host: 'manager.test', 'x-forwarded-proto': 'https', 'x-agent-manager-key': key, 'content-type': contentType });
+  const req: Req = { method: 'POST', url: `https://manager.test/api/v1/releases/screenshot?id=${id}&name=title.png`, headers, body: '', raw: bytes };
+  return guarded(addReleaseScreenshot, () => {})(req, ctx);
+}
 
 function call(handler: Handler, method: string, path: string, opts: { body?: unknown; key?: string; owner?: boolean; noWriteHeader?: boolean } = {}) {
   const headers = new Headers({ host: 'manager.test', 'x-forwarded-proto': 'https' });
@@ -51,7 +60,7 @@ const list = async (path = '/api/v1/releases') => (await call(listReleases, 'GET
 beforeEach(async () => {
   resetAuthState();
   clock = new Date('2026-11-16T12:00:00Z');
-  ctx = { store: new MemoryStore(undefined, () => clock), now: () => clock, env: { OWNER_LOGINS: OWNER } };
+  ctx = { store: new MemoryStore(undefined, () => clock), now: () => clock, env: { OWNER_LOGINS: OWNER }, releaseMedia: new MemoryMediaStore() };
   const res = await call(createKey, 'POST', '/api/v1/keys', { owner: true, body: { name: 'pc-studio' } });
   key = (res.body as CreateKeyResponse).secret;
   await call(report, 'POST', '/api/v1/report', {
@@ -142,6 +151,31 @@ describe('releases', () => {
     const { releasedAt: _, ...legacy } = stored;
     await ctx.store.putRelease(legacy as typeof stored);
     expect((await list()).releases[0]!.releasedAt).toBe(stored.createdAt);
+  });
+
+  it('takes screenshots, serves them, keeps them on a resend and replaces them on request', async () => {
+    const { stored } = (await send()).body as ReleaseCreateResponse;
+    const res = await upload(stored.id);
+    expect(res.status).toBe(201);
+    const shot = (res.body as { stored: { id: string; name: string } }).stored;
+    expect(shot.name).toBe('title.png');
+    expect((await upload(stored.id, Buffer.from('not a picture'))).status).toBe(415);
+    expect((await upload(stored.id, PNG, 'video/mp4')).status).toBe(415);
+
+    const served = await call(releaseScreenshot, 'GET', `/api/v1/releases/screenshot?id=${stored.id}&shot=${shot.id}`, { owner: true });
+    expect(served.status).toBe(200);
+    expect(served.bytes?.equals(PNG)).toBe(true);
+
+    await send({ notes: 'fixed' });
+    expect((await list()).releases[0]!.screenshots).toHaveLength(1);
+    await send({ clearScreenshots: true });
+    expect((await list()).releases[0]!.screenshots).toEqual([]);
+    expect((await call(releaseScreenshot, 'GET', `/api/v1/releases/screenshot?id=${stored.id}&shot=${shot.id}`, { owner: true })).status).toBe(404);
+    expect((await ctx.releaseMedia!.get(`${stored.id}/${shot.id}`))).toBeNull();
+  });
+
+  it('refuses a screenshot for a release that does not exist', async () => {
+    expect((await upload('0'.repeat(32))).status).toBe(404);
   });
 
   it('lists newest first and filters by game', async () => {
