@@ -1,8 +1,8 @@
 // Releases: what agents have shipped, newest release date first. Each one links to where the release
 // is, with its screenshots, change notes and what the agent has to say about it. The newest release
-// of each game is marked Latest, and "Latest only" hides the rest. Each release folds to a row;
-// Collapse all and Expand all fold them all (remembered on this browser). Filters pick a game,
-// agent or PC; they live in the URL, and ?id= opens on one.
+// of each game is marked Latest, and "Latest only" hides the rest. Each release folds to a row: the
+// latest of each game start open and older ones folded, and Collapse all and Expand all fold or open
+// them all. Filters pick a game, agent or PC; they live in the URL, and ?id= opens on one.
 
 import { releasedAtOf, type FeedbackMedia, type Release, type ReleasesResponse } from '@agent-manager-delux/shared';
 import { ActionIcon, Anchor, Badge, Box, Button, Group, Modal, Paper, Select, Stack, Switch, Text, Title, Tooltip, Typography, UnstyledButton } from '@mantine/core';
@@ -25,7 +25,6 @@ import { useUrlState } from '../lib/urlState';
 const POLL_MS = 30_000;
 const FOLD_CHARS = 900;
 const FOLD_LINES = 14;
-const COLLAPSED_KEY = 'am-releases-collapsed';
 
 const loadReleases = (signal: AbortSignal) => api.releases(signal);
 
@@ -36,23 +35,6 @@ const releaseDate = (iso: string) => new Date(iso).toLocaleDateString(undefined,
 
 /** Screenshots in the shape the feedback picture strip shows. */
 const asMedia = (r: Release): FeedbackMedia[] => (r.screenshots ?? []).map((s) => ({ ...s, kind: 'image' }));
-
-function readCollapsed(): boolean {
-  try {
-    return localStorage.getItem(COLLAPSED_KEY) === '1';
-  } catch {
-    return false;
-  }
-}
-
-function saveCollapsed(value: boolean) {
-  try {
-    if (value) localStorage.setItem(COLLAPSED_KEY, '1');
-    else localStorage.removeItem(COLLAPSED_KEY);
-  } catch {
-    // Not remembered, then.
-  }
-}
 
 function choices(list: readonly Release[], pick: (r: Release) => string | null): string[] {
   return [...new Set(list.map(pick).filter((v): v is string => Boolean(v)))].sort((a, b) => a.localeCompare(b));
@@ -285,14 +267,14 @@ export function ReleasesPage() {
   const focusId = params.get('id');
   const latestOnly = params.get('show') === 'latest';
   const [deleting, setDeleting] = useState<Release | null>(null);
-  // Folded by default or not (remembered on this browser), and the ones folded or opened one at a time since.
-  const [allCollapsed, setAllCollapsed] = useState(readCollapsed);
+  // How releases start: latest open and older folded, or all of one after Collapse all or Expand
+  // all; and the ones folded or opened one at a time since.
+  const [fold, setFold] = useState<'older' | 'all' | 'none'>('older');
   const [toggled, setToggled] = useState<ReadonlySet<string>>(new Set());
 
   const foldAll = (value: boolean) => {
-    setAllCollapsed(value);
+    setFold(value ? 'all' : 'none');
     setToggled(new Set());
-    saveCollapsed(value);
   };
   const toggle = (id: string) =>
     setToggled((prev) => {
@@ -300,8 +282,6 @@ export function ReleasesPage() {
       if (!next.delete(id)) next.add(id);
       return next;
     });
-  // A linked release always opens.
-  const isCollapsed = (id: string) => id !== focusId && allCollapsed !== toggled.has(id);
 
   const everything = useMemo(() => data?.releases ?? [], [data]);
   const games = useMemo(() => choices(everything, gameOf), [everything]);
@@ -326,6 +306,12 @@ export function ReleasesPage() {
     (r) => (!latestOnly || latestIds.has(r.id)) && (!game || gameOf(r) === game) && (!agentName || r.agentName === agentName) && (!machine || r.machine === machine),
   );
   const olderCount = everything.length - latestIds.size;
+  // A linked release always opens.
+  const isCollapsed = (id: string) => {
+    if (id === focusId) return false;
+    const folded = fold === 'all' || (fold === 'older' && !latestIds.has(id));
+    return folded !== toggled.has(id);
+  };
 
   // A link to one release opens the page on it: show it whatever the filters say.
   const focusFound = Boolean(focusId && everything.some((r) => r.id === focusId));
@@ -391,7 +377,7 @@ export function ReleasesPage() {
           {shown.length === 0 ? (
             <EmptyState title="Nothing matches these filters">Clear a filter to see more.</EmptyState>
           ) : (
-            <Stack gap={allCollapsed ? 6 : 'md'}>
+            <Stack gap="sm">
               {shown.map((r) => (
                 <ReleaseCard
                   key={r.id}
