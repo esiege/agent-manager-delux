@@ -138,6 +138,8 @@ export const LIMITS = {
   releaseLinkLabelLength: 80,
   /** Screenshots on a release (pictures, up to feedbackImageBytes each). */
   releaseScreenshots: 6,
+  /** Playtest notes saved on a release at once. */
+  releaseNotesPerSave: 20,
 } as const;
 
 /** Owner calls that change something must carry this header, which another site can't add (CSRF). */
@@ -650,6 +652,8 @@ export interface Feedback {
   followedBy: string | null;
   /** A tag that groups requests, such as a release: "v0.20.0". */
   group?: string | null;
+  /** The release a playtest note is about (its id), for notes the owner adds on the Releases tab. */
+  release?: string | null;
   /** Captions for attached files, by file name. */
   captions?: Record<string, string>;
   /** Files the owner attached to their answer. */
@@ -1258,6 +1262,17 @@ export interface Release {
 
 /** When a release came out: its release date, or when it was sent for one sent before dates existed. */
 export const releasedAtOf = (r: Pick<Release, 'createdAt'> & { releasedAt?: string | null }): string => r.releasedAt || r.createdAt;
+
+/** POST /api/v1/releases/notes, as the owner: playtest notes on a release. Each becomes a Feedback
+ *  item that's already answered, so it goes to the agent and shows as In progress. */
+export interface ReleaseNotesInput {
+  id: string;
+  notes: string[];
+}
+
+export interface ReleaseNotesResponse {
+  feedback: Feedback[];
+}
 
 export interface ReleaseCreateResponse extends WriteResponse<Release> {
   /** True when this game and version were sent before, so this updated it. */

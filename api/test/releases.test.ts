@@ -3,14 +3,18 @@ import {
   OWNER_WRITE_HEADER,
   type AgentDetailResponse,
   type CreateKeyResponse,
+  type FeedbackInboxResponse,
+  type FeedbackListResponse,
   type ReleaseCreateResponse,
+  type ReleaseNotesResponse,
   type ReleasesResponse,
 } from '@agent-manager-delux/shared';
 import { resetAuthState } from '../src/auth';
 import { report } from '../src/handlers/ingest';
 import { createKey } from '../src/handlers/keys';
 import { agent } from '../src/handlers/read';
-import { addReleaseScreenshot, createRelease, deleteRelease, listReleases, releaseScreenshot } from '../src/handlers/releases';
+import { feedbackInbox, feedbackList } from '../src/handlers/feedback';
+import { addReleaseNotes, addReleaseScreenshot, createRelease, deleteRelease, listReleases, releaseScreenshot } from '../src/handlers/releases';
 import { guarded, type Ctx, type Handler, type Req } from '../src/http';
 import { MemoryMediaStore } from '../src/store/media';
 import { MemoryStore } from '../src/store/memory';
@@ -218,6 +222,35 @@ describe('releases', () => {
     expect((await call(deleteRelease, 'POST', '/api/v1/releases/delete', { key, body: { id: stored.id } })).status).toBe(401);
     expect((await call(deleteRelease, 'POST', '/api/v1/releases/delete', { owner: true, body: { id: stored.id } })).status).toBe(200);
     expect((await list()).releases).toHaveLength(0);
+  });
+
+  it('turns playtest notes into answered feedback for the agent, In progress', async () => {
+    const { stored } = (await send()).body as ReleaseCreateResponse;
+    const notes = (body: unknown, opts: { owner?: boolean; key?: string; noWriteHeader?: boolean } = { owner: true }) =>
+      call(addReleaseNotes, 'POST', '/api/v1/releases/notes', { ...opts, body });
+    expect((await notes({ id: stored.id, notes: ['x'] }, { key })).status).toBe(401);
+    expect((await notes({ id: stored.id, notes: ['x'] }, { owner: true, noWriteHeader: true })).status).toBe(403);
+    expect((await notes({ id: stored.id, notes: ['  ', ''] })).status).toBe(400);
+    expect((await notes({ id: 'f'.repeat(32), notes: ['x'] })).status).toBe(404);
+
+    const res = await notes({ id: stored.id, notes: ['Jump feels floaty\nespecially on ice', 'Music too loud in the menu'] });
+    expect(res.status).toBe(201);
+    const made = (res.body as ReleaseNotesResponse).feedback;
+    expect(made).toHaveLength(2);
+    expect(made[0]).toMatchObject({
+      agentId: SESSION,
+      status: 'sent',
+      release: stored.id,
+      group: 'v0.20.0',
+      title: 'Playtest v0.20.0: Jump feels floaty',
+      response: { note: 'Jump feels floaty\nespecially on ice', by: OWNER },
+      keyName: 'pc-studio',
+    });
+
+    const listed = (await call(feedbackList, 'GET', '/api/v1/feedback', { owner: true })).body as FeedbackListResponse;
+    expect(listed.feedback.filter((f) => f.release === stored.id)).toHaveLength(2);
+    const inbox = (await call(feedbackInbox, 'GET', '/api/v1/feedback/inbox', { key })).body as FeedbackInboxResponse;
+    expect(inbox.feedback.map((f) => f.response?.note).sort()).toEqual(['Jump feels floaty\nespecially on ice', 'Music too loud in the menu']);
   });
 
   it('lets agents read releases with a machine key', async () => {

@@ -1,5 +1,6 @@
 // Releases: agents announce what they've shipped (a link, change notes and their comments) with a
-// machine key. The Releases tab reads them as the owner; agents read them too.
+// machine key. The Releases tab reads them as the owner, who can add playtest notes to one (each a
+// Feedback item for the agent that sent it); agents read them too.
 // Sending the same game and version again corrects that release instead of adding another: what's
 // left out stays as it was, so an agent can fix just the notes or the date.
 
@@ -12,13 +13,14 @@ import {
   type AgentEvent,
   type Release,
   type ReleaseCreateResponse,
+  type ReleaseNotesResponse,
   type ReleaseScreenshot,
   type ReleasesResponse,
 } from '@agent-manager-delux/shared';
 import { requireKey, requireOwnerOrKey, requireOwnerWrite } from '../auth';
 import { HttpError, fail, ok, publicOrigin, query, readJson, type Ctx, type Handler } from '../http';
 import type { MediaStore } from '../store/media';
-import { fileName, looksLike, parseRange } from './feedback';
+import { fileName, looksLike, parseRange, playtestNote } from './feedback';
 
 const MAX_RELEASES = 500;
 const DEFAULT_RELEASES = 200;
@@ -154,6 +156,26 @@ export const deleteRelease: Handler = async (req, ctx) => {
   await ctx.store.deleteRelease(raw.id);
   await dropScreenshots(ctx, raw.id, found?.screenshots ?? []);
   return ok({ ok: true });
+};
+
+/** POST /api/v1/releases/notes {"id","notes":["…"]}: the owner's playtest notes on a release. */
+export const addReleaseNotes: Handler = async (req, ctx) => {
+  const owner = requireOwnerWrite(req, ctx);
+  const raw = readJson(req, LIMITS.reportBytes) as { id?: unknown; notes?: unknown };
+  const id = idParam(typeof raw?.id === 'string' ? raw.id : null);
+  if (!Array.isArray(raw?.notes) || raw.notes.some((n) => typeof n !== 'string')) throw new HttpError(400, 'notes must be a list of text');
+  const notes = (raw.notes as string[]).map((n) => n.trim()).filter(Boolean);
+  if (notes.length === 0) throw new HttpError(400, 'Write a note first');
+  if (notes.length > LIMITS.releaseNotesPerSave) throw new HttpError(400, `Save at most ${LIMITS.releaseNotesPerSave} notes at once`);
+  const tooLong = notes.find((n) => n.length > LIMITS.feedbackAnswerLength);
+  if (tooLong) throw new HttpError(400, `A note is longer than ${LIMITS.feedbackAnswerLength} characters`);
+  const release = await ctx.store.getRelease(id);
+  if (!release) throw new HttpError(404, `No release with id ${id}`);
+  const url = releasePage(publicOrigin(req, ctx.env), id);
+  const feedback = [];
+  for (const note of notes) feedback.push(await playtestNote(ctx, release, owner.login, note, url));
+  const body: ReleaseNotesResponse = { feedback };
+  return ok(body, 201);
 };
 
 /**

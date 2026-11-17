@@ -15,7 +15,7 @@ import { ackMessage, inbox, sendMessage } from './handlers/messages';
 import { hideAgents } from './handlers/hide';
 import { reporting } from './handlers/reporting';
 import { perfSamples, perfSession, perfSessionDetail, perfSessions } from './handlers/perf';
-import { addReleaseScreenshot, createRelease, deleteRelease, listReleases, releaseScreenshot } from './handlers/releases';
+import { addReleaseNotes, addReleaseScreenshot, createRelease, deleteRelease, listReleases, releaseScreenshot } from './handlers/releases';
 import {
   addAnswerMedia,
   addFeedbackMedia,
@@ -90,6 +90,7 @@ register('setMachineName', 'POST', 'v1/machine-names', setMachineName);
 register('createRelease', 'POST', 'v1/releases', createRelease);
 register('listReleases', 'GET', 'v1/releases', listReleases);
 register('deleteRelease', 'POST', 'v1/releases/delete', deleteRelease);
+register('addReleaseNotes', 'POST', 'v1/releases/notes', addReleaseNotes);
 register('addReleaseScreenshot', 'POST', 'v1/releases/screenshot', addReleaseScreenshot);
 register('releaseScreenshot', 'GET', 'v1/releases/screenshot', releaseScreenshot);
 

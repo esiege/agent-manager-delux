@@ -41,6 +41,7 @@ import {
   type FeedbackMediaType,
   type FeedbackStatus,
   type FeedbackStep,
+  type Release,
 } from '@agent-manager-delux/shared';
 import { feedbackPage, linkMediaUrl, notifyFeedback } from '../alerts';
 import { requireKey, requireOwner, requireOwnerWrite } from '../auth';
@@ -683,6 +684,53 @@ export const legacyBlocker: Handler = async (req, ctx) => {
     },
   });
 };
+
+// ---- Playtest notes ----
+
+/**
+ * A playtest note the owner adds on a release: a Feedback item for the agent that sent it, answered
+ * as it's made (the note is the answer), so it goes to the session and shows as In progress. The
+ * agent moves it on like any other: viewed, planning, implementing, closed.
+ */
+export async function playtestNote(ctx: Ctx, release: Release, by: string, text: string, releaseUrl: string): Promise<Feedback> {
+  const agent = await ctx.store.getAgent(release.agentId);
+  if (!agent) throw new HttpError(404, `The agent that sent ${release.version} (${release.agentName}) is gone, so there's no one to send notes to`);
+  const at = ctx.now().toISOString();
+  const game = release.project ?? release.agentName;
+  const firstLine = text.split(/\r?\n/).find((l) => l.trim())?.trim() ?? text;
+  const short = firstLine.length > 100 ? `${firstLine.slice(0, 99)}…` : firstLine;
+  const open: Feedback = {
+    id: randomUUID(),
+    agentId: agent.id,
+    agentName: agent.name,
+    kind: agent.kind,
+    project: release.project,
+    machine: agent.machine,
+    title: maskSecrets(`Playtest ${release.version}: ${short}`).slice(0, LIMITS.feedbackTitleLength),
+    body: maskSecrets(`Playtest note from ${by} on [${game} ${release.version}](${releaseUrl}).`),
+    questions: [],
+    media: [],
+    status: 'open',
+    createdAt: at,
+    updatedAt: at,
+    history: [{ status: 'open', at, by, note: null }],
+    response: null,
+    follows: null,
+    supersedes: null,
+    followedBy: null,
+    group: release.version.slice(0, LIMITS.feedbackGroupLength),
+    release: release.id,
+    captions: {},
+    answerMedia: [],
+    // The owner wrote it: no alert or email about it.
+    notifiedAt: at,
+    expectFiles: 0,
+    delivery: null,
+    messageId: null,
+    keyName: release.keyName,
+  };
+  return answer(ctx, open, by, 'site', 'send', { note: text });
+}
 
 // ---- Crashes ----
 
