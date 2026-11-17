@@ -168,6 +168,11 @@ export function feedbackMediaUrl(feedbackId: string, mediaId: string): string {
   return `${API_BASE}/feedback/media?${new URLSearchParams({ id: feedbackId, media: mediaId }).toString()}`;
 }
 
+/** A release's screenshot, for <img> (same origin, so the sign-in cookie goes along). */
+export function releaseScreenshotUrl(releaseId: string, shotId: string): string {
+  return `${API_BASE}/releases/screenshot?${new URLSearchParams({ id: releaseId, shot: shotId }).toString()}`;
+}
+
 /** Who is signed in, from the site's built-in auth. Used to name a non-owner account. */
 export async function fetchSignedInName(): Promise<string | null> {
   try {

@@ -132,7 +132,7 @@ function Clip({ m, mediaUrl, caption }: { m: FeedbackMedia; mediaUrl: MediaUrl; 
   );
 }
 
-function MediaStrip({ items, mediaUrl, captions }: { items: FeedbackMedia[]; mediaUrl: MediaUrl; captions: Record<string, string> }) {
+export function MediaStrip({ items, mediaUrl, captions }: { items: FeedbackMedia[]; mediaUrl: MediaUrl; captions: Record<string, string> }) {
   // The picture open full size, by its place among the pictures; the arrows page through them.
   const [openAt, setOpenAt] = useState<number | null>(null);
   const images = items.filter((m) => m.kind === 'image');
