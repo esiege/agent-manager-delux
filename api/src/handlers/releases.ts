@@ -1,5 +1,5 @@
 // Releases: agents announce what they've shipped (a link, change notes and their comments) with a
-// machine key. The Releases tab reads them as the owner, who can delete one; agents read them too.
+// machine key. The Releases tab reads them as the owner; agents read them too.
 // Sending the same game and version again corrects that release instead of adding another: what's
 // left out stays as it was, so an agent can fix just the notes or the date.
 

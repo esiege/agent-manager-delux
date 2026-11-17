@@ -149,7 +149,6 @@ export const api = {
   sendMessage: (input: SendMessageInput) => request<SendMessageResponse>('/messages', { method: 'POST', body: input }),
   feedback: (signal?: AbortSignal) => request<FeedbackListResponse>('/feedback', { signal }),
   releases: (signal?: AbortSignal) => request<ReleasesResponse>('/releases?limit=500', { signal }),
-  deleteRelease: (id: string) => request<{ ok: true }>('/releases/delete', { method: 'POST', body: { id } }),
   respondFeedback: (input: RespondFeedbackInput) =>
     request<{ feedback: Feedback }>('/feedback/respond', { method: 'POST', body: input }),
   /** Attaches a file to your answer, while the request is open. */

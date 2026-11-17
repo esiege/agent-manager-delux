@@ -5,8 +5,8 @@
 // them all. Filters pick a game, agent or PC; they live in the URL, and ?id= opens on one.
 
 import { releasedAtOf, type FeedbackMedia, type Release, type ReleasesResponse } from '@agent-manager-delux/shared';
-import { ActionIcon, Anchor, Badge, Box, Button, Group, Modal, Paper, Select, Stack, Switch, Text, Title, Tooltip, Typography, UnstyledButton } from '@mantine/core';
-import { IconChevronDown, IconChevronRight, IconExternalLink, IconFoldDown, IconFoldUp, IconLink, IconPhoto, IconTrash, IconX } from '@tabler/icons-react';
+import { ActionIcon, Anchor, Badge, Box, Button, Group, Paper, Select, Stack, Switch, Text, Title, Tooltip, Typography, UnstyledButton } from '@mantine/core';
+import { IconChevronDown, IconChevronRight, IconExternalLink, IconFoldDown, IconFoldUp, IconLink, IconPhoto, IconX } from '@tabler/icons-react';
 import { useEffect, useMemo, useState } from 'react';
 import Markdown from 'react-markdown';
 import { Link } from 'react-router';
@@ -18,7 +18,6 @@ import { EmptyState, LoadError, TableSkeleton } from '../components/States';
 import { RelativeTime, UpdatedAgo } from '../components/Time';
 import { api, releaseScreenshotUrl } from '../lib/api';
 import { agentPath } from '../lib/labels';
-import { notifyError, notifySuccess } from '../lib/notify';
 import { usePolling } from '../lib/usePolling';
 import { useUrlState } from '../lib/urlState';
 
@@ -65,7 +64,6 @@ interface ReleaseCardProps {
   highlighted: boolean;
   collapsed: boolean;
   onToggle: () => void;
-  onDelete: () => void;
 }
 
 /** A folded release: one row with its game, version, name and date. */
@@ -117,7 +115,7 @@ function ReleaseRow({ release: r, latest, highlighted, onToggle }: ReleaseCardPr
 }
 
 function ReleaseCard(props: ReleaseCardProps) {
-  const { release: r, latest, highlighted, collapsed, onToggle, onDelete } = props;
+  const { release: r, latest, highlighted, collapsed, onToggle } = props;
   if (collapsed) return <ReleaseRow {...props} />;
   const shots = asMedia(r);
   return (
@@ -158,11 +156,6 @@ function ReleaseCard(props: ReleaseCardProps) {
             <Tooltip label="Open release">
               <ActionIcon component="a" href={r.url} target="_blank" rel="noopener noreferrer" variant="filled" size="lg" aria-label="Open release" hiddenFrom="xs">
                 <IconExternalLink size={16} />
-              </ActionIcon>
-            </Tooltip>
-            <Tooltip label="Delete this release">
-              <ActionIcon variant="subtle" color="gray" size="lg" onClick={onDelete} aria-label={`Delete ${gameOf(r)} ${r.version}`}>
-                <IconTrash size={16} />
               </ActionIcon>
             </Tooltip>
           </Group>
@@ -225,48 +218,11 @@ function ReleaseCard(props: ReleaseCardProps) {
   );
 }
 
-function DeleteModal({ target, onClose, onDeleted }: { target: Release | null; onClose: () => void; onDeleted: () => void }) {
-  const [busy, setBusy] = useState(false);
-  const remove = async () => {
-    if (!target) return;
-    setBusy(true);
-    try {
-      await api.deleteRelease(target.id);
-      notifySuccess(`Deleted ${gameOf(target)} ${target.version}`);
-      onDeleted();
-      onClose();
-    } catch (err) {
-      notifyError(err, "Couldn't delete the release");
-    } finally {
-      setBusy(false);
-    }
-  };
-  return (
-    <Modal opened={target !== null} onClose={onClose} title={<Text fw={600}>Delete {target ? `${gameOf(target)} ${target.version}` : ''}?</Text>}>
-      <Stack gap="md">
-        <Text size="sm">
-          It goes from this list, with its screenshots, change notes and comments. The release itself isn&apos;t touched. An agent that sends it again adds it
-          back.
-        </Text>
-        <Group justify="flex-end">
-          <Button variant="default" onClick={onClose} disabled={busy}>
-            Cancel
-          </Button>
-          <Button color="red" onClick={remove} loading={busy} data-autofocus>
-            Delete
-          </Button>
-        </Group>
-      </Stack>
-    </Modal>
-  );
-}
-
 export function ReleasesPage() {
   const { data, error, updatedAt, refresh } = usePolling<ReleasesResponse>('releases', loadReleases, { intervalMs: POLL_MS });
   const { params, update } = useUrlState();
   const focusId = params.get('id');
   const latestOnly = params.get('show') === 'latest';
-  const [deleting, setDeleting] = useState<Release | null>(null);
   // How releases start: latest open and older folded, or all of one after Collapse all or Expand
   // all; and the ones folded or opened one at a time since.
   const [fold, setFold] = useState<'older' | 'all' | 'none'>('older');
@@ -386,7 +342,6 @@ export function ReleasesPage() {
                   highlighted={r.id === focusId}
                   collapsed={isCollapsed(r.id)}
                   onToggle={() => toggle(r.id)}
-                  onDelete={() => setDeleting(r)}
                 />
               ))}
             </Stack>
@@ -398,7 +353,6 @@ export function ReleasesPage() {
           )}
         </Stack>
       )}
-      <DeleteModal target={deleting} onClose={() => setDeleting(null)} onDeleted={refresh} />
     </>
   );
 }
