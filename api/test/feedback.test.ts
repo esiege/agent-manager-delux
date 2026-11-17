@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   OWNER_WRITE_HEADER,
+  describeFeedback,
   type CreateKeyResponse,
   type Feedback,
   type FeedbackCreateResponse,
@@ -297,6 +298,47 @@ describe('answering', () => {
     expect((res.body as { feedback: Feedback }).feedback).toMatchObject({ status: 'dismissed', response: null });
     expect((await respond(id)).status).toBe(409);
     expect((await upload(id, PNG, 'image/png')).status).toBe(409);
+  });
+
+  it('saves an answer to finish later, without telling the agent, and clears it once sent', async () => {
+    const saved = ((await respond(id, { action: 'save', answers: { q1: 'gold' }, notes: { q2: 'Halfway through' }, note: null })).body as { feedback: Feedback }).feedback;
+    expect(saved).toMatchObject({ status: 'open', response: null, draft: { answers: { q1: 'gold' }, notes: { q2: 'Halfway through' }, note: null, by: OWNER } });
+    expect(saved.history.map((s) => s.status)).toEqual(['open']);
+    const { messages } = (await call(inbox, 'POST', '/api/v1/inbox', { key, body: { machine: 'pc' } })).body as InboxResponse;
+    expect(messages).toHaveLength(0);
+    expect(describeFeedback(await read(id))).not.toContain('gold');
+    // Saving nothing clears it; bad answers are refused as when sending.
+    expect(((await respond(id, { action: 'save', note: null })).body as { feedback: Feedback }).feedback.draft).toBeNull();
+    expect((await respond(id, { action: 'save', answers: { q2: 9 } })).status).toBe(400);
+    await respond(id, { action: 'save', note: 'draft' });
+    expect(((await respond(id)).body as { feedback: Feedback }).feedback.draft).toBeNull();
+  });
+
+  it('reopens an answered request: the answer goes back to a draft, and the session is told', async () => {
+    await respond(id, { answers: { q1: '1' }, note: 'First go' });
+    await read(id);
+    await setStatus(id, 'planning');
+    const res = await respond(id, { action: 'reopen' });
+    expect(res.status).toBe(200);
+    const back = (res.body as { feedback: Feedback }).feedback;
+    expect(back).toMatchObject({ status: 'open', response: null, messageId: null, draft: { answers: { q1: '1' }, note: 'First go' } });
+    expect(back.history.map((s) => s.status)).toEqual(['open', 'sent', 'viewed', 'planning', 'open']);
+    expect(describeFeedback(back)).toContain('reopened it to change their answer');
+    // The agent can't move it on until it's answered again.
+    expect((await setStatus(id, 'implementing')).status).toBe(409);
+    const { messages } = (await call(inbox, 'POST', '/api/v1/inbox', { key, body: { machine: 'pc' } })).body as InboxResponse;
+    expect(messages.at(-1)!.text).toMatch(/reopened your feedback request .* Their earlier answer is withdrawn/);
+    expect((await respond(id, { action: 'reopen' })).status).toBe(409);
+    // Answered again, it goes on as before.
+    expect(((await respond(id, { note: 'Second go' })).body as { feedback: Feedback }).feedback.status).toBe('sent');
+  });
+
+  it('reopens a closed request too', async () => {
+    await respond(id);
+    await respond(id, { action: 'close', note: null });
+    const back = ((await respond(id, { action: 'reopen' })).body as { feedback: Feedback }).feedback;
+    expect(back.status).toBe('open');
+    expect((await list()).feedback.find((f) => f.id === id)!.status).toBe('open');
   });
 
   it('needs the owner and the site header', async () => {

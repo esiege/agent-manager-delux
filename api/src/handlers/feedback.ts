@@ -453,6 +453,20 @@ function answerText(f: Feedback, by: string): string {
   return `${head}\n\n${body}\n\n${tail}`;
 }
 
+/** Saves an answer to finish later. The request stays open and the agent isn't told. */
+async function saveDraft(ctx: Ctx, found: Feedback, by: string, via: 'site' | 'email', body: unknown): Promise<Feedback> {
+  mustBeOpen(found);
+  const note = optionalText(body, 'note', LIMITS.feedbackAnswerLength);
+  const answers = form(() => readFeedbackAnswers(found.questions, field(body, 'answers')));
+  const notes = form(() => readFeedbackNotes(found.questions, field(body, 'notes')));
+  const empty = note === null && Object.keys(answers).length === 0 && Object.keys(notes).length === 0;
+  const at = ctx.now().toISOString();
+  // A save isn't a step: the request is still waiting on you. Its time still moves "Recently changed".
+  const next: Feedback = { ...found, updatedAt: at, draft: empty ? null : { answers, ...(Object.keys(notes).length ? { notes } : {}), note, by, at, via } };
+  await ctx.store.putFeedback(next);
+  return next;
+}
+
 /** Sends or dismisses an open request, from the tab or from an email link, and tells the session. */
 async function answer(ctx: Ctx, found: Feedback, by: string, via: 'site' | 'email', action: 'send' | 'dismiss', body: unknown): Promise<Feedback> {
   if (found.status !== 'open') {
@@ -471,8 +485,8 @@ async function answer(ctx: Ctx, found: Feedback, by: string, via: 'site' | 'emai
   const response = { answers, ...(Object.keys(notes).length ? { notes } : {}), note, by, at, via };
   let next: Feedback =
     action === 'send'
-      ? { ...step(found, 'sent', by, null, at), response }
-      : { ...step(found, 'dismissed', by, note, at), response: note || Object.keys(notes).length || files.length ? response : null };
+      ? { ...step(found, 'sent', by, null, at), response, draft: null }
+      : { ...step(found, 'dismissed', by, note, at), response: note || Object.keys(notes).length || files.length ? response : null, draft: null };
 
   const agent = await ctx.store.getAgent(found.agentId);
   const refused = agent ? whyNoMessages(agent, now) : 'The agent is gone';
@@ -491,15 +505,47 @@ async function answer(ctx: Ctx, found: Feedback, by: string, via: 'site' | 'emai
   return next;
 }
 
-/** POST /api/v1/feedback/respond: the owner answers a request, dismisses it, or closes one the agent never closed. */
+/**
+ * Takes an answered (or closed) request back to open, to change the answer. The answer becomes the
+ * draft, so the card shows it filled in; the session is told the earlier answer is withdrawn.
+ */
+async function reopen(ctx: Ctx, found: Feedback, by: string): Promise<Feedback> {
+  if (found.status === 'open') throw new HttpError(409, "It's open already");
+  const now = ctx.now();
+  const at = now.toISOString();
+  const next: Feedback = {
+    ...step(found, 'open', by, `Reopened by ${by}`, at),
+    draft: found.response ?? found.draft ?? null,
+    response: null,
+    delivery: null,
+    messageId: null,
+  };
+  const agent = await ctx.store.getAgent(found.agentId);
+  if (agent && !whyNoMessages(agent, now)) {
+    const text = `${by} reopened your feedback request "${found.title}" (${found.id}) to change their answer. Their earlier answer is withdrawn: hold off acting on it, and wait for the new one (${AGENTCTL} feedback ${found.id}).`;
+    await queueMessage(ctx, agent, text, by, `Feedback reopened by ${by}: ${preview(found.title)}`, found.id);
+  }
+  await ctx.store.putFeedback(next);
+  await ctx.store.addEvents([feedbackEvent(found.agentId, `Feedback reopened by ${by}: ${preview(found.title)}`, at)]);
+  return next;
+}
+
+/**
+ * POST /api/v1/feedback/respond: the owner answers a request, saves an answer to finish later,
+ * dismisses it, closes one the agent never closed, or reopens one to change the answer.
+ */
 export const respondFeedback: Handler = async (req, ctx) => {
   const owner = requireOwnerWrite(req, ctx);
   const body = readJson(req, MAX_BODY);
   const id = feedbackId(field(body, 'id'));
   const action = field(body, 'action');
-  if (action !== 'send' && action !== 'dismiss' && action !== 'close') throw new HttpError(400, 'action must be send, dismiss or close');
+  if (action !== 'send' && action !== 'save' && action !== 'dismiss' && action !== 'close' && action !== 'reopen') {
+    throw new HttpError(400, 'action must be send, save, dismiss, close or reopen');
+  }
   const found = await ctx.store.getFeedback(id);
   if (!found) throw new HttpError(404, `No feedback request with id ${id}`);
+  if (action === 'save') return ok({ feedback: await saveDraft(ctx, found, owner.login, 'site', body) });
+  if (action === 'reopen') return ok({ feedback: await reopen(ctx, found, owner.login) });
 
   if (action === 'close') {
     if (FEEDBACK_DONE_STATUSES.includes(found.status)) throw new HttpError(409, `It's ${FEEDBACK_STATUS_LABEL[found.status].toLowerCase()} already`);
@@ -597,8 +643,8 @@ export const linkRespond: Handler = async (req, ctx) => {
   const body = readJson(req, MAX_BODY);
   const { f, email, token } = await fromLink(ctx, field(body, 't') as string);
   const action = field(body, 'action');
-  if (action !== 'send' && action !== 'dismiss') throw new HttpError(400, 'action must be send or dismiss');
-  const done = await answer(ctx, f, email, 'email', action, body);
+  if (action !== 'send' && action !== 'save' && action !== 'dismiss') throw new HttpError(400, 'action must be send, save or dismiss');
+  const done = action === 'save' ? await saveDraft(ctx, f, email, 'email', body) : await answer(ctx, f, email, 'email', action, body);
   return ok({ feedback: linkView(req, ctx, done, email, token).feedback });
 };
 

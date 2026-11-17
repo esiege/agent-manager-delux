@@ -367,7 +367,12 @@ export function feedbackNextSteps(f: Feedback, agentctl = 'agentctl'): string {
 /** Everything about one request, for `agentctl feedback <id>` and the message to the session. */
 export function describeFeedback(f: Feedback, agentctl = 'agentctl'): string {
   const head = `Feedback ${f.id}: "${f.title}". Status: ${FEEDBACK_STATUS_LABEL[f.status]}.`;
-  if (f.status === 'open') return `${head}\nThe person hasn't answered yet.`;
+  if (f.status === 'open') {
+    const reopened = f.history.slice(1).some((s) => s.status === 'open');
+    return reopened
+      ? `${head}\nThe person reopened it to change their answer: their earlier answer is withdrawn. Wait for the new one.`
+      : `${head}\nThe person hasn't answered yet.`;
+  }
   const answer = f.response ?? null;
   const by = answer ? `${answer.by} answered at ${answer.at}:` : 'Their answer:';
   const lines = [head, by, describeFeedbackAnswer(f)];

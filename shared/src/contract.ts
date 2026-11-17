@@ -495,7 +495,7 @@ export interface HideAgentsResponse {
 
 /**
  * Where a feedback request is. The owner moves it from "open" to "sent" (answered) or "dismissed"
- * (no opinion: use your default). The agent then moves it on: "viewed" (it read the answer: set on
+ * (no opinion: use your default), and can reopen it (back to "open") to change the answer. The agent then moves it on: "viewed" (it read the answer: set on
  * its own when it does), "planning", "implementing", and finally "closed" (done as asked) or
  * "followup" (it has more questions, in a new request that follows this one).
  */
@@ -635,6 +635,11 @@ export interface Feedback {
   history: FeedbackStep[];
   /** The owner's answer, once sent. */
   response: FeedbackResponse | null;
+  /**
+   * An answer saved to finish later, while it's still open: "Save" on the card. The agent doesn't
+   * see it. Reopening a request puts its answer back here, to change and close again.
+   */
+  draft?: FeedbackResponse | null;
   /** The request this one follows up on. */
   follows: string | null;
   /** The request this one replaced (closed when this one was asked). */
@@ -685,10 +690,14 @@ export interface FeedbackCreateResponse extends WriteResponse<Feedback> {
   feedbackUrl: string;
 }
 
-/** POST /api/v1/feedback/respond, as the owner. "close" ends a request the agent never closed. */
+/**
+ * POST /api/v1/feedback/respond, as the owner. "send" answers it (the card's Close button), "save"
+ * keeps the answer as a draft and leaves it open, "dismiss" says no opinion, "close" ends one the
+ * agent never closed, and "reopen" takes it back to open (waiting on you) to change the answer.
+ */
 export interface RespondFeedbackInput {
   id: string;
-  action: 'send' | 'dismiss' | 'close';
+  action: 'send' | 'save' | 'dismiss' | 'close' | 'reopen';
   answers?: Record<string, FeedbackAnswerValue>;
   /** Notes under questions, by question id. */
   notes?: Record<string, string>;
@@ -713,7 +722,7 @@ export interface FeedbackLinkResponse {
 /** POST /api/v1/feedback/link/respond: answers from the page an email links to. */
 export interface LinkRespondInput extends Omit<RespondFeedbackInput, 'id' | 'action'> {
   t: string;
-  action: 'send' | 'dismiss';
+  action: 'send' | 'save' | 'dismiss';
 }
 
 /** Email links stop working this long after the email. */
