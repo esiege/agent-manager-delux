@@ -128,7 +128,7 @@ Then, in this order:
    - `agentctl feedback status <id> closed --note "You wrote: '…'. Done in v0.18."` when it's done, in their words,
    - or ask a follow-up with `--follows <id>` if you have more questions.
 
-If they press **Dismiss**, they have no opinion: go ahead with your default, and close it the same way.
+If they close it without filling anything in (status "Dismissed"), they have no opinion: go ahead with your default, and close it the same way. They can also **reopen** a request to change their answer: you're told in the session, and it's back to "Waiting on you". Hold off acting on the earlier answer, and read the new one when it comes.
 
 ### Announcing a release
 

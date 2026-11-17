@@ -2,7 +2,8 @@
 // ones you've answered show how far the agent has got (viewed, planning, implementing); finished
 // ones from the last week are listed underneath. Tabs at the top pick a status; the filters pick a
 // game, agent, PC or group (a release, say), and the sort order. They live in the URL, so a view can
-// be bookmarked. At the bottom you choose which email addresses get each new request.
+// be bookmarked. Each section shows a page at a time, so a long list doesn't load every picture at
+// once. At the bottom you choose which email addresses get each new request.
 
 import {
   FEEDBACK_DONE_STATUSES,
@@ -11,7 +12,7 @@ import {
   type Feedback,
   type FeedbackListResponse,
 } from '@agent-manager-delux/shared';
-import { Anchor, Badge, Button, Group, Paper, Select, SimpleGrid, Stack, Tabs, Text, Title, Tooltip } from '@mantine/core';
+import { Anchor, Badge, Button, Group, Pagination, Paper, Select, SimpleGrid, Stack, Tabs, Text, Title, Tooltip } from '@mantine/core';
 import { IconX } from '@tabler/icons-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router';
@@ -21,6 +22,7 @@ import {
   AnswerSummary,
   FeedbackCard,
   FeedbackProgressCard,
+  ReopenButton,
   scrollToFeedback,
   type FeedbackAction,
   type FeedbackAnswer,
@@ -32,7 +34,7 @@ import { RelativeTime, UpdatedAgo } from '../components/Time';
 import { api, feedbackMediaUrl } from '../lib/api';
 import { mediaTypeOf } from '../lib/media';
 import { agentPath, plural } from '../lib/labels';
-import { notifyError } from '../lib/notify';
+import { notifyError, notifySuccess } from '../lib/notify';
 import { usePolling } from '../lib/usePolling';
 import { useUrlState } from '../lib/urlState';
 
@@ -68,12 +70,54 @@ const COMPARE: Record<Sort, (a: Feedback, b: Feedback) => number> = {
   agent: (a, b) => a.agentName.localeCompare(b.agentName) || b.createdAt.localeCompare(a.createdAt),
 };
 
+/** How many of each section show at once: answer cards are heavy (pictures, clips), done rows light. */
+const PAGE_SIZE = { waiting: 6, progress: 9, done: 25 } as const;
+
+/**
+ * One page of a list. It goes back to the first page when the filters change (`resetKey`), keeps to
+ * the last page when the list shrinks, and turns to the page holding `focusId` when that appears.
+ */
+function usePage<T extends { id: string }>(list: T[], size: number, resetKey: string, focusId: string | null) {
+  const [page, setPage] = useState(1);
+  const pages = Math.max(1, Math.ceil(list.length / size));
+  useEffect(() => setPage(1), [resetKey]);
+  const focusAt = focusId ? list.findIndex((x) => x.id === focusId) : -1;
+  useEffect(() => {
+    if (focusAt >= 0) setPage(Math.floor(focusAt / size) + 1);
+  }, [focusAt, size]);
+  const current = Math.min(page, pages);
+  return { items: list.slice((current - 1) * size, current * size), page: current, pages, setPage };
+}
+
+function Pager({ page, pages, total, size, onChange, anchor }: { page: number; pages: number; total: number; size: number; onChange: (p: number) => void; anchor: string }) {
+  if (pages <= 1) return null;
+  const first = (page - 1) * size + 1;
+  return (
+    <Group justify="space-between" gap="xs" wrap="wrap">
+      <Text size="xs" c="dimmed">
+        {first} to {Math.min(total, page * size)} of {total}
+      </Text>
+      <Pagination
+        size="sm"
+        total={pages}
+        value={page}
+        onChange={(p) => {
+          onChange(p);
+          document.getElementById(anchor)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }}
+        siblings={1}
+        boundaries={1}
+      />
+    </Group>
+  );
+}
+
 /** The distinct values of one field, sorted, for a filter's choices. */
 function choices(list: readonly Feedback[], pick: (f: Feedback) => string | null | undefined): string[] {
   return [...new Set(list.map(pick).filter((v): v is string => Boolean(v)))].sort((a, b) => a.localeCompare(b));
 }
 
-function DoneRow({ f }: { f: Feedback }) {
+function DoneRow({ f, onReopen }: { f: Feedback; onReopen: (f: Feedback) => Promise<boolean> }) {
   const last = f.history[f.history.length - 1];
   return (
     <Stack gap={2} py={6} className="am-feedback-done" id={`feedback-${f.id}`}>
@@ -90,13 +134,16 @@ function DoneRow({ f }: { f: Feedback }) {
           </Badge>
         )}
       </Group>
-      <Text size="xs" c="dimmed" component="div">
-        <Anchor component={Link} to={agentPath(f.agentId)} size="xs">
-          {f.project || f.agentName}
-        </Anchor>{' '}
-        on {f.machine} · {last ? `by ${last.by} ` : ''}
-        <RelativeTime iso={f.updatedAt} span size="xs" />
-      </Text>
+      <Group justify="space-between" gap="xs" wrap="nowrap">
+        <Text size="xs" c="dimmed" component="div">
+          <Anchor component={Link} to={agentPath(f.agentId)} size="xs">
+            {f.project || f.agentName}
+          </Anchor>{' '}
+          on {f.machine} · {last ? `by ${last.by} ` : ''}
+          <RelativeTime iso={f.updatedAt} span size="xs" />
+        </Text>
+        <ReopenButton feedback={f} onReopen={onReopen} />
+      </Group>
       {last?.note && (
         <Text size="sm" lineClamp={3} style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
           {last.note}
@@ -168,6 +215,10 @@ export function FeedbackPage() {
   const done = matching.filter(isDone);
   const counts: Record<StatusTab, number> = { all: open.length + progress.length + done.length, waiting: open.length, progress: progress.length, done: done.length };
   const show = (section: Exclude<StatusTab, 'all'>) => tab === 'all' || tab === section;
+  const resetKey = [tab, sort, game, agentName, machine, group].join('|');
+  const openPage = usePage(open, PAGE_SIZE.waiting, resetKey, focusId);
+  const progressPage = usePage(progress, PAGE_SIZE.progress, resetKey, focusId);
+  const donePage = usePage(done, PAGE_SIZE.done, resetKey, focusId);
   const messages = new Map((data?.messages ?? []).map((m) => [m.id, m]));
 
   // A link from an alert opens the page on that request: show it whatever the filters say.
@@ -184,11 +235,27 @@ export function FeedbackPage() {
   async function onAnswer(f: Feedback, action: FeedbackAction, { answers, notes, note }: FeedbackAnswer): Promise<boolean> {
     try {
       await api.respondFeedback({ id: f.id, action, answers, notes, note: note || null });
-      setHandled((m) => new Map(m).set(f.id, f.status));
+      // A saved answer stays where it is, to finish later.
+      if (action === 'save') notifySuccess(`Saved your answer to "${f.title}"`);
+      else setHandled((m) => new Map(m).set(f.id, f.status));
       refresh();
       return true;
     } catch (e) {
-      notifyError(e, action === 'send' ? "Couldn't send your feedback" : "Couldn't dismiss the request");
+      notifyError(e, action === 'save' ? "Couldn't save your answer" : "Couldn't close the request");
+      refresh();
+      return false;
+    }
+  }
+
+  async function onReopen(f: Feedback): Promise<boolean> {
+    try {
+      await api.respondFeedback({ id: f.id, action: 'reopen' });
+      setHandled((m) => new Map(m).set(f.id, f.status));
+      notifySuccess(`"${f.title}" is waiting on you again`);
+      refresh();
+      return true;
+    } catch (e) {
+      notifyError(e, "Couldn't open the request");
       refresh();
       return false;
     }
@@ -288,13 +355,14 @@ export function FeedbackPage() {
               ).
             </EmptyState>
           ) : (
-            <Stack gap="sm">
+            <Stack gap="sm" id="feedback-waiting">
               <SectionTitle title="Waiting on you" />
               <Text size="sm" c="dimmed">
-                {plural(open.length, 'request is', 'requests are')} waiting on you. Pick, rate or write, then press Send, or Ctrl+Enter.
+                {plural(open.length, 'request is', 'requests are')} waiting on you. Pick, rate or write, then press Close when you're done, or Save
+                to come back to it later.
               </Text>
               <SimpleGrid cols={{ base: 1, md: 2, xl: 3 }} spacing="md" verticalSpacing="md">
-                {open.map((f) => (
+                {openPage.items.map((f) => (
                   <FeedbackCard
                     key={f.id}
                     feedback={f}
@@ -310,11 +378,12 @@ export function FeedbackPage() {
                   />
                 ))}
               </SimpleGrid>
+              <Pager {...openPage} total={open.length} size={PAGE_SIZE.waiting} onChange={openPage.setPage} anchor="feedback-waiting" />
             </Stack>
           )}
 
           {show('progress') && (progress.length > 0 || tab === 'progress') && (
-            <Stack gap="sm">
+            <Stack gap="sm" id="feedback-progress">
               <SectionTitle title="In progress" />
               {progress.length === 0 && (
                 <Text size="sm" c="dimmed">
@@ -322,7 +391,7 @@ export function FeedbackPage() {
                 </Text>
               )}
               <SimpleGrid cols={{ base: 1, md: 2, xl: 3 }} spacing="md" verticalSpacing="md">
-                {progress.map((f) => (
+                {progressPage.items.map((f) => (
                   <FeedbackProgressCard
                     key={f.id}
                     feedback={f}
@@ -333,14 +402,16 @@ export function FeedbackPage() {
                     highlighted={f.id === focusId}
                     mediaUrl={(m) => feedbackMediaUrl(f.id, m)}
                     onClose={onClose}
+                    onReopen={onReopen}
                   />
                 ))}
               </SimpleGrid>
+              <Pager {...progressPage} total={progress.length} size={PAGE_SIZE.progress} onChange={progressPage.setPage} anchor="feedback-progress" />
             </Stack>
           )}
 
           {show('done') && (done.length > 0 || tab === 'done') && (
-            <Stack gap="xs">
+            <Stack gap="xs" id="feedback-done">
               <SectionTitle
                 title="Done"
                 hint={{ short: `last ${FEEDBACK_RECENT_DAYS} days`, long: `Requests closed or followed up in the last ${FEEDBACK_RECENT_DAYS} days` }}
@@ -350,11 +421,14 @@ export function FeedbackPage() {
                   Nothing closed in the last {FEEDBACK_RECENT_DAYS} days.
                 </Text>
               ) : (
-                <Paper withBorder px="md" py="xs" radius="md">
-                  {done.map((f) => (
-                    <DoneRow key={f.id} f={f} />
-                  ))}
-                </Paper>
+                <>
+                  <Paper withBorder px="md" py="xs" radius="md">
+                    {donePage.items.map((f) => (
+                      <DoneRow key={f.id} f={f} onReopen={onReopen} />
+                    ))}
+                  </Paper>
+                  <Pager {...donePage} total={done.length} size={PAGE_SIZE.done} onChange={donePage.setPage} anchor="feedback-done" />
+                </>
               )}
             </Stack>
           )}

@@ -9,7 +9,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { FeedbackCard, FeedbackReadOnlyCard, type FeedbackAction, type FeedbackAnswer, type Preselect } from '../components/FeedbackCard';
 import { Logo } from '../components/Logo';
 import { mediaTypeOf } from '../lib/media';
-import { notifyError } from '../lib/notify';
+import { notifyError, notifySuccess } from '../lib/notify';
 import { LinkError, linkApi } from './linkApi';
 
 /** After sending, look again this often, so the agent's steps show up here too. */
@@ -141,11 +141,17 @@ export function AnswerApp() {
   async function onAnswer(action: FeedbackAction, { answers, notes, note }: FeedbackAnswer): Promise<boolean> {
     try {
       await linkApi.respond({ t: token!, action, answers, notes, note: note || null });
+      // A saved answer stays on the page to finish later; this link still works until it's closed.
+      if (action === 'save') {
+        notifySuccess('Saved. Come back to this link (or the Feedback tab) to finish it.');
+        void load(null);
+        return true;
+      }
       await load(action);
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return true;
     } catch (e) {
-      notifyError(e, action === 'send' ? "Couldn't send your feedback" : "Couldn't dismiss the request");
+      notifyError(e, action === 'save' ? "Couldn't save your answer" : "Couldn't close the request");
       void load(null);
       return false;
     }
@@ -156,7 +162,7 @@ export function AnswerApp() {
       {data.canAnswer ? (
         <>
           <Text size="sm" c="dimmed">
-            Answering as {data.email}. Pick, rate or write, then press Send.
+            Answering as {data.email}. Pick, rate or write, then press Close when you're done, or Save to finish later.
           </Text>
           <FeedbackCard
             feedback={f}

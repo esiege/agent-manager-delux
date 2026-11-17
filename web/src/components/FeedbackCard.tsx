@@ -45,6 +45,7 @@ import {
   IconChevronLeft,
   IconChevronRight,
   IconDeviceDesktop,
+  IconDeviceFloppy,
   IconHash,
   IconMail,
   IconMessageCircle,
@@ -52,10 +53,8 @@ import {
   IconMusic,
   IconPaperclip,
   IconReplace,
-  IconSend,
   IconTag,
   IconVideo,
-  IconX,
 } from '@tabler/icons-react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import Markdown from 'react-markdown';
@@ -466,10 +465,13 @@ function preselected(q: FeedbackQuestion, value: string): FeedbackAnswerValue | 
   return null;
 }
 
-function initialAnswers(questions: FeedbackQuestion[], preselect: Preselect | undefined): Answers {
-  const out: Answers = {};
-  for (const q of questions) {
-    if (q.type === 'choice' && q.recommended) out[q.id] = q.multiple ? [q.recommended] : q.recommended;
+function initialAnswers(questions: FeedbackQuestion[], preselect: Preselect | undefined, draft: Answers | undefined): Answers {
+  // A saved draft is what you had; otherwise the recommended options start picked.
+  const out: Answers = { ...draft };
+  if (!draft) {
+    for (const q of questions) {
+      if (q.type === 'choice' && q.recommended) out[q.id] = q.multiple ? [q.recommended] : q.recommended;
+    }
   }
   const q = preselect && questions.find((x) => x.id === preselect.questionId);
   if (q && preselect) {
@@ -477,6 +479,15 @@ function initialAnswers(questions: FeedbackQuestion[], preselect: Preselect | un
     if (v !== null) out[q.id] = v;
   }
   return out;
+}
+
+/** The answer as it's sent or saved: blanks dropped, text trimmed. */
+function cleaned(answers: Answers, notes: Notes, note: string): FeedbackAnswer {
+  const clean: Answers = {};
+  for (const [id, v] of Object.entries(answers)) if (hasValue(v)) clean[id] = typeof v === 'string' ? v.trim() : v;
+  const cleanNotes: Notes = {};
+  for (const [id, n] of Object.entries(notes)) if (n.trim()) cleanNotes[id] = n.trim();
+  return { answers: clean, notes: cleanNotes, note: note.trim() };
 }
 
 function hasValue(v: FeedbackAnswerValue | undefined): boolean {
@@ -707,7 +718,8 @@ function DeliveryHint({ status }: { status: FeedbackAgentInfo | undefined }) {
   );
 }
 
-export type FeedbackAction = 'send' | 'dismiss';
+/** "send" is the card's Close button; Close with nothing filled in dismisses it. "save" keeps it open. */
+export type FeedbackAction = 'send' | 'save' | 'dismiss';
 
 export interface FeedbackAnswer {
   answers: Answers;
@@ -751,9 +763,10 @@ export function FeedbackCard({
   onAnswer,
   preselect,
 }: FeedbackCardProps) {
-  const [answers, setAnswers] = useState<Answers>(() => initialAnswers(feedback.questions, preselect));
-  const [notes, setNotes] = useState<Notes>({});
-  const [note, setNote] = useState('');
+  const draft = feedback.draft ?? undefined;
+  const [answers, setAnswers] = useState<Answers>(() => initialAnswers(feedback.questions, preselect, draft?.answers));
+  const [notes, setNotes] = useState<Notes>(() => ({ ...draft?.notes }));
+  const [note, setNote] = useState(draft?.note ?? '');
   const [busy, setBusy] = useState<FeedbackAction | null>(null);
   const [attached, setAttached] = useState<FeedbackMedia[]>(() => feedback.answerMedia ?? []);
   const [previews, setPreviews] = useState<Record<string, string>>({});
@@ -768,6 +781,13 @@ export function FeedbackCard({
   const anyNote = Object.values(notes).some((n) => n.trim() !== '');
   const canSend = note.trim() !== '' || anyNote || attached.length > 0 || Object.values(answers).some(hasValue);
   const working = busy !== null || uploading.length > 0;
+  const current = cleaned(answers, notes, note);
+  // What was last saved (or the untouched form), to tell whether there's anything new to save.
+  const [savedKey, setSavedKey] = useState(() =>
+    JSON.stringify(draft ? cleaned(draft.answers, draft.notes ?? {}, draft.note ?? '') : cleaned(initialAnswers(feedback.questions, preselect, undefined), {}, '')),
+  );
+  const [savedAt, setSavedAt] = useState(draft?.at ?? null);
+  const unsaved = JSON.stringify(current) !== savedKey;
 
   // Local previews are object URLs: let them go with the card.
   useEffect(() => () => Object.values(previewsRef.current).forEach((u) => URL.revokeObjectURL(u)), []);
@@ -821,18 +841,18 @@ export function FeedbackCard({
   }
 
   async function answer(action: FeedbackAction) {
-    if (working || (action === 'send' && !canSend)) return;
-    setBusy(action);
-    const clean: Answers = {};
-    for (const [id, v] of Object.entries(answers)) if (hasValue(v)) clean[id] = typeof v === 'string' ? v.trim() : v;
-    const cleanNotes: Notes = {};
-    for (const [id, n] of Object.entries(notes)) if (n.trim()) cleanNotes[id] = n.trim();
-    const done = await onAnswer(action, {
-      answers: action === 'send' ? clean : {},
-      notes: action === 'send' ? cleanNotes : {},
-      note: note.trim(),
-    });
-    if (!done) setBusy(null);
+    if (working) return;
+    // Closing with nothing filled in is "no opinion": the agent goes ahead with its default.
+    const act: FeedbackAction = action === 'send' && !canSend ? 'dismiss' : action;
+    setBusy(act);
+    const done = await onAnswer(act, act === 'dismiss' ? { answers: {}, notes: {}, note: '' } : current);
+    if (act === 'save') {
+      setBusy(null);
+      if (done) {
+        setSavedKey(JSON.stringify(current));
+        setSavedAt(new Date().toISOString());
+      }
+    } else if (!done) setBusy(null);
   }
 
   return (
@@ -873,6 +893,9 @@ export function FeedbackCard({
           if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
             e.preventDefault();
             void answer('send');
+          } else if (e.key.toLowerCase() === 's' && (e.ctrlKey || e.metaKey)) {
+            e.preventDefault();
+            void answer('save');
           }
         }}
       >
@@ -932,7 +955,7 @@ export function FeedbackCard({
           {!noQuestions && <QuestionPrompt>{feedback.questions.some((q) => q.type === 'text') ? 'Note' : 'Anything else?'}</QuestionPrompt>}
           <Textarea
             aria-label={noQuestions ? `Your feedback on: ${feedback.title}` : 'A note for the agent'}
-            placeholder={noQuestions ? 'Your feedback. Ctrl+Enter sends.' : 'A note for the agent (optional). Ctrl+Enter sends.'}
+            placeholder={noQuestions ? 'Your feedback. Ctrl+S saves, Ctrl+Enter closes.' : 'A note for the agent (optional). Ctrl+S saves, Ctrl+Enter closes.'}
             autosize
             minRows={noQuestions ? 2 : 1}
             maxRows={10}
@@ -966,27 +989,40 @@ export function FeedbackCard({
               {showDelivery && <DeliveryHint status={agent} />}
             </Group>
             <Group gap="xs" wrap="nowrap" ml="auto">
-              <Tooltip label="No opinion: the agent goes ahead with its default">
+              {(savedAt || unsaved) && (
+                <Text size="xs" c="dimmed" style={{ whiteSpace: 'nowrap' }}>
+                  {unsaved ? (
+                    'Not saved'
+                  ) : (
+                    <>
+                      Saved <RelativeTime iso={savedAt!} span size="xs" />
+                    </>
+                  )}
+                </Text>
+              )}
+              <Tooltip label="Keep your answer to finish later. The agent doesn't see it until you close it.">
                 <Button
                   variant="default"
                   size="xs"
-                  leftSection={<IconX size={14} />}
-                  loading={busy === 'dismiss'}
-                  disabled={busy === 'send' || uploading.length > 0}
-                  onClick={() => void answer('dismiss')}
+                  leftSection={<IconDeviceFloppy size={14} />}
+                  loading={busy === 'save'}
+                  disabled={(busy !== null && busy !== 'save') || uploading.length > 0 || !unsaved}
+                  onClick={() => void answer('save')}
                 >
-                  Dismiss
+                  Save
                 </Button>
               </Tooltip>
-              <Button
-                size="xs"
-                leftSection={<IconSend size={14} />}
-                loading={busy === 'send'}
-                disabled={busy === 'dismiss' || !canSend || uploading.length > 0}
-                onClick={() => void answer('send')}
-              >
-                Send
-              </Button>
+              <Tooltip label={canSend ? 'Done: send your answer to the agent' : 'Nothing filled in: the agent goes ahead with its default'}>
+                <Button
+                  size="xs"
+                  leftSection={<IconCheck size={14} />}
+                  loading={busy === 'send' || busy === 'dismiss'}
+                  disabled={busy === 'save' || uploading.length > 0}
+                  onClick={() => void answer('send')}
+                >
+                  Close
+                </Button>
+              </Tooltip>
             </Group>
           </Group>
         </Stack>
@@ -996,6 +1032,27 @@ export function FeedbackCard({
 }
 
 // ---- A request you've answered, while the agent works on it ----
+
+/** Takes a request back to "Waiting on you", with its answer filled in to change. */
+export function ReopenButton({ feedback, onReopen }: { feedback: Feedback; onReopen: (feedback: Feedback) => Promise<boolean> }) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <Tooltip label="Back to Waiting on you, with your answer filled in to change. The agent is told to wait for the new one.">
+      <Button
+        variant="subtle"
+        size="compact-xs"
+        leftSection={<IconArrowBackUp size={14} />}
+        loading={busy}
+        onClick={async () => {
+          setBusy(true);
+          if (!(await onReopen(feedback))) setBusy(false);
+        }}
+      >
+        Open
+      </Button>
+    </Tooltip>
+  );
+}
 
 /** What happened to the message that carried the answer, or the server's note on why none went. */
 function deliveryLine(f: Feedback, message: AgentMessage | undefined, now: string): { text: string; color: string } {
@@ -1017,9 +1074,10 @@ interface FeedbackProgressCardProps {
   highlighted: boolean;
   mediaUrl: MediaUrl;
   onClose: (feedback: Feedback) => Promise<boolean>;
+  onReopen: (feedback: Feedback) => Promise<boolean>;
 }
 
-export function FeedbackProgressCard({ feedback, findRequest, agent, message, now, highlighted, mediaUrl, onClose }: FeedbackProgressCardProps) {
+export function FeedbackProgressCard({ feedback, findRequest, agent, message, now, highlighted, mediaUrl, onClose, onReopen }: FeedbackProgressCardProps) {
   const [busy, setBusy] = useState(false);
   const delivery = feedback.status === 'sent' || feedback.status === 'dismissed' ? deliveryLine(feedback, message, now) : null;
 
@@ -1057,11 +1115,14 @@ export function FeedbackProgressCard({ feedback, findRequest, agent, message, no
           ) : (
             <span />
           )}
-          <Tooltip label="Close it yourself: for a request the agent will never get back to">
-            <Button variant="subtle" color="gray" size="compact-xs" loading={busy} onClick={() => void close()}>
-              Close
-            </Button>
-          </Tooltip>
+          <Group gap="xs" wrap="nowrap">
+            <ReopenButton feedback={feedback} onReopen={onReopen} />
+            <Tooltip label="Close it yourself: for a request the agent will never get back to">
+              <Button variant="subtle" color="gray" size="compact-xs" loading={busy} onClick={() => void close()}>
+                Close
+              </Button>
+            </Tooltip>
+          </Group>
         </Group>
       </Stack>
     </Paper>

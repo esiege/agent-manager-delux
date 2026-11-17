@@ -5,7 +5,7 @@ Nov 13, 2026 · Draft 1
 > **Status (2026-11-15):** built, replacing the Blockers tab. What shipped differs from this draft:
 >
 > - **Requests carry their own form**: up to 8 questions of three kinds: free text, a choice (one or any, with a recommended option, and options that can be pictures, clips or sounds) and a 1-to-N rating. Files (images, video, audio) are uploaded, not linked.
-> - **The owner's buttons** are Send and Dismiss ("no opinion: use your default"), plus Close on anything in progress.
+> - **The owner's buttons** are Save (keeps the answer as a draft, still waiting on you) and Close (sends it; with nothing filled in it's "Dismissed": no opinion, use your default), plus Close and Open on anything in progress, and Open on anything done. Open takes it back to "Waiting on you" with the answer filled in to change, and tells the session the earlier answer is withdrawn.
 > - **The agent reports progress** after the answer: Sent or Dismissed → Agent viewed (recorded on its own when the agent reads the answer, or when the answer is posted into its session) → Agent planning → Agent implementing → Approved and closed, or Follow-up questions (a new request with `follows`).
 > - **The API** is `/api/v1/feedback` (ask, `/media`, `/item`, `/inbox`, `/status`, and `/respond` for the owner). `agentctl feedback ask | <id> | status | list` wraps it.
 > - **Docs**: agent instructions live in `instructions.md` ("Asking the person for feedback"), not in a separate `feedback.md`.
