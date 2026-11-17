@@ -1,6 +1,6 @@
 # Agent Manager Delux: how to report in
 
-Instructions version: **7** · Updated: **2026-11-16**
+Instructions version: **8** · Updated: **2026-11-17**
 
 Already set up on this PC? Follow `$MANAGER_URL/update.md` instead: it checks whether you're on the latest and updates if not.
 
@@ -144,7 +144,8 @@ node "$HOME/.agent-manager/agentctl.js" release "v0.20.0"   --url https://github
 - **`--comment`** is what you have to say about it: what to try first, what's known to be rough, what's next.
 - **`--link "<label>=<url>"`** adds more links (downloads, store pages), up to 8. **`--title`** names the release.
 - **`--game <name>`** says which game or app it is; it defaults to this session's project.
-- Sending the same game and version again **updates** that release (fixed notes, a new link) instead of adding another.
+- **`--date <YYYY-MM-DD>`** is when it came out; it defaults to now. Give it when announcing an older release, so the list stays in release order.
+- Sending the same game and version again **corrects** that release instead of adding another: only what you give changes, and `--url` isn't needed then. `agentctl release "v0.20.0" --notes-file CHANGELOG-0.20.md` fixes the notes; `--date 2025-03-14` fixes the date; an empty value clears one (`--comment ""`, `--link ""`).
 - `agentctl release list [--game <name>]` lists the releases sent so far; `--json` on either prints JSON.
 
 ### Updates from Agent Manager Delux
@@ -260,7 +261,7 @@ Ask the person for feedback; they answer on the Feedback tab or from an email. T
 
 ### Releases: `POST $MANAGER_URL/api/v1/releases`
 
-Announce a release on the Releases tab. The body: `agentId`, `version` (up to 80), `url` (where the release is; http or https), and optionally `title`, `notes` (Markdown change notes, up to 20,000), `comment` (up to 4,000), `links` (up to 8 of `{"label", "url"}`) and `project` (the game; defaults to the agent's project). Sending the same project and version again updates that release; the answer's `updated` says which happened, and `releaseUrl` links to it. `GET /api/v1/releases[?game=<name>][&limit=<n>]` lists releases, newest first.
+Announce a release on the Releases tab. The body: `agentId`, `version` (up to 80), `url` (where the release is; http or https), and optionally `title`, `notes` (Markdown change notes, up to 20,000), `comment` (up to 4,000), `links` (up to 8 of `{"label", "url"}`), `project` (the game; defaults to the agent's project) and `releasedAt` (when it came out, ISO 8601 or a date like `2025-03-14`; defaults to now). Sending the same project and version again corrects that release: fields left out keep their values (so `url` is only required the first time), and `null` or `""` clears one. The answer's `updated` says which happened, and `releaseUrl` links to it. `GET /api/v1/releases[?game=<name>][&limit=<n>]` lists releases, newest release date first.
 
 ### Heartbeat for many agents: `POST $MANAGER_URL/api/v1/heartbeat`
 

@@ -19,6 +19,7 @@ import {
   type FeedbackMedia,
   type ReleaseCreateResponse,
   type ReleasesResponse,
+  releasedAtOf,
   type ReportInput,
   type ReportResponse,
   type ReportedState,
@@ -116,14 +117,16 @@ const HELP = `agentctl: reports the Claude Code sessions on this PC to Agent Man
       Your requests that aren't closed yet, and where each one is (--json: with answered/viewed).
   agentctl release "<version>" --url <link> [--title "<name>"] [--notes "<Markdown>"]
                   [--notes-file <file>] [--comment "<text>"] [--link "<label>=<url>"]...
-                  [--game <name>] [--json]
+                  [--date <YYYY-MM-DD>] [--game <name>] [--json]
       Announces a release on the Releases tab: its version, where it is (--url: the GitHub
       release, store page or download), its change notes (Markdown; "-" reads them from stdin)
       and your comments (what to try first, what's known to be rough). --link adds more links,
       such as downloads. --game defaults to this session's project. Sending the same game and
-      version again updates that release.
+      version again corrects that release: only what you give changes (--url isn't needed
+      then), and an empty value clears one (--comment "", --link ""). --date is when it came out
+      (default: now); give it when announcing an older release, or to correct one.
   agentctl release list [--game <name>] [--limit <n>] [--json]
-      Lists releases sent so far, newest first.
+      Lists releases sent so far, newest release date first.
   agentctl blocker ...        The old name for feedback ask (--details, --screenshot still work).
   agentctl perf [--game <name>] [--machine <name or nickname>] [--scene <scene>]
                [--status running|ended|crashed|lost] [--tests] [--days <n>] [--limit <n>] [--json]
@@ -647,36 +650,35 @@ async function blockerCommand(args: ParsedArgs) {
 async function releaseCommand(args: ParsedArgs) {
   const { positional, flags, lists } = args;
   if (positional[0] === 'list') return releaseListCommand(flags);
-  const usage = 'Usage: agentctl release "<version>" --url <link> [--title "<name>"] [--notes "<Markdown>"] [--comment "<text>"] (see agentctl help)';
+  const usage = 'Usage: agentctl release "<version>" --url <link> [--title "<name>"] [--notes "<Markdown>"] [--comment "<text>"] [--date <YYYY-MM-DD>] (see agentctl help)';
   const version = positional.join(' ').trim();
-  if (!version || !flags.url) throw new UsageError(usage);
-  let notes: string | null = flags.notes?.trim() ?? null;
-  if (notes === '-') notes = (await readStdin()).trim();
+  if (!version) throw new UsageError(usage);
+  // Only what's given is sent: resending a version corrects just those, and "" clears one.
+  const body: Record<string, unknown> = { version };
+  if (flags.url !== undefined) body.url = flags.url.trim();
+  if (flags.title !== undefined) body.title = flags.title.trim() || null;
+  if (flags.comment !== undefined) body.comment = flags.comment.trim() || null;
+  if (flags.notes !== undefined) body.notes = (flags.notes.trim() === '-' ? await readStdin() : flags.notes).trim() || null;
   if (flags['notes-file']) {
-    if (notes) throw new UsageError('Give the change notes with --notes or --notes-file, not both');
+    if (flags.notes !== undefined) throw new UsageError('Give the change notes with --notes or --notes-file, not both');
     const path = resolve(flags['notes-file']);
     if (!existsSync(path)) throw new UsageError(`No file at ${path}`);
-    notes = readFileSync(path, 'utf8').trim();
+    body.notes = readFileSync(path, 'utf8').trim() || null;
   }
-  let links: ReturnType<typeof releaseLinkArg>[];
-  try {
-    links = (lists.link ?? []).map(releaseLinkArg);
-  } catch (e) {
-    throw new UsageError((e as Error).message);
+  if (lists.link?.every((l) => l.trim() === '')) body.links = null;
+  else if (lists.link) {
+    try {
+      body.links = lists.link.map(releaseLinkArg);
+    } catch (e) {
+      throw new UsageError((e as Error).message);
+    }
   }
+  if (flags.game?.trim()) body.project = flags.game.trim();
+  if (flags.date?.trim()) body.releasedAt = flags.date.trim();
 
   const s = findCallingSession();
   const config = loadConfig();
-  const res = await post<ReleaseCreateResponse>(config, '/releases', {
-    agentId: s.agentId,
-    version,
-    url: flags.url,
-    title: flags.title?.trim() || null,
-    notes: notes || null,
-    comment: flags.comment?.trim() || null,
-    links,
-    project: flags.game?.trim() || null,
-  });
+  const res = await post<ReleaseCreateResponse>(config, '/releases', { agentId: s.agentId, ...body });
   if ('json' in flags) {
     console.log(JSON.stringify({ id: res.stored.id, url: res.releaseUrl, updated: res.updated }));
     return;
@@ -700,7 +702,7 @@ async function releaseListCommand(flags: Record<string, string>) {
   }
   for (const r of releases) {
     const title = r.title ? ` "${r.title}"` : '';
-    console.log(`${r.createdAt.slice(0, 10)}  ${r.project ?? r.agentName} ${r.version}${title}  ${r.url}`);
+    console.log(`${releasedAtOf(r).slice(0, 10)}  ${r.project ?? r.agentName} ${r.version}${title}  ${r.url}`);
   }
   if (truncated) console.log('(more releases exist; raise --limit or narrow with --game)');
 }
