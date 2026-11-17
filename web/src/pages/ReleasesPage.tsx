@@ -3,10 +3,12 @@
 // of each game is marked Latest, and "Latest only" hides the rest. Each release folds to a row: the
 // latest of each game start open and older ones folded, and Collapse all and Expand all fold or open
 // them all. Filters pick a game, agent or PC; they live in the URL, and ?id= opens on one.
+// Playtest notes: any number of notes on a release. Saving sends each to the agent that released it
+// as a Feedback item, already answered, so it shows on the Feedback tab under In progress.
 
-import { releasedAtOf, type FeedbackMedia, type Release, type ReleasesResponse } from '@agent-manager-delux/shared';
-import { ActionIcon, Anchor, Badge, Box, Button, Group, Paper, Select, Stack, Switch, Text, Title, Tooltip, Typography, UnstyledButton } from '@mantine/core';
-import { IconChevronDown, IconChevronRight, IconExternalLink, IconFoldDown, IconFoldUp, IconLink, IconPhoto, IconX } from '@tabler/icons-react';
+import { FEEDBACK_STATUS_LABEL, releasedAtOf, type Feedback, type FeedbackListResponse, type FeedbackMedia, type Release, type ReleasesResponse } from '@agent-manager-delux/shared';
+import { ActionIcon, Anchor, Badge, Box, Button, Group, Paper, Select, Stack, Switch, Text, Textarea, Title, Tooltip, Typography, UnstyledButton } from '@mantine/core';
+import { IconChevronDown, IconChevronRight, IconExternalLink, IconFoldDown, IconFoldUp, IconLink, IconPhoto, IconPlus, IconX } from '@tabler/icons-react';
 import { useEffect, useMemo, useState } from 'react';
 import Markdown from 'react-markdown';
 import { Link } from 'react-router';
@@ -18,6 +20,7 @@ import { EmptyState, LoadError, TableSkeleton } from '../components/States';
 import { RelativeTime, UpdatedAgo } from '../components/Time';
 import { api, releaseScreenshotUrl } from '../lib/api';
 import { agentPath } from '../lib/labels';
+import { notifyError, notifySuccess } from '../lib/notify';
 import { usePolling } from '../lib/usePolling';
 import { useUrlState } from '../lib/urlState';
 
@@ -26,6 +29,7 @@ const FOLD_CHARS = 900;
 const FOLD_LINES = 14;
 
 const loadReleases = (signal: AbortSignal) => api.releases(signal);
+const loadFeedback = (signal: AbortSignal) => api.feedback(signal);
 
 const gameOf = (r: Release) => r.project ?? r.agentName;
 
@@ -58,16 +62,94 @@ function Notes({ text }: { text: string }) {
   );
 }
 
+/** The notes sent on a release, and a form to write more. */
+function PlaytestNotes({ release, sent, onSaved }: { release: Release; sent: Feedback[]; onSaved: () => void }) {
+  const [drafts, setDrafts] = useState<string[]>([]);
+  const [busy, setBusy] = useState(false);
+  const filled = drafts.map((d) => d.trim()).filter(Boolean);
+  const setDraft = (i: number, value: string) => setDrafts((prev) => prev.map((d, j) => (j === i ? value : d)));
+  const save = async () => {
+    setBusy(true);
+    try {
+      await api.addReleaseNotes(release.id, filled);
+      notifySuccess(filled.length === 1 ? 'Note sent to the agent' : `${filled.length} notes sent to the agent`);
+      setDrafts([]);
+      onSaved();
+    } catch (err) {
+      notifyError(err, "Couldn't save the notes");
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div>
+      <Text size="xs" c="dimmed" mb={4}>
+        Playtest notes
+      </Text>
+      <Stack gap="xs">
+        {sent.map((f) => (
+          <Group key={f.id} gap="xs" wrap="nowrap" align="flex-start">
+            <Badge size="xs" variant="light" color={f.status === 'closed' ? 'green' : 'blue'} tt="none" mt={3} style={{ flexShrink: 0 }}>
+              {FEEDBACK_STATUS_LABEL[f.status]}
+            </Badge>
+            <Anchor component={Link} to={`/feedback?id=${encodeURIComponent(f.id)}`} size="sm" style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
+              {f.response?.note ?? f.title}
+            </Anchor>
+          </Group>
+        ))}
+        {drafts.map((d, i) => (
+          <Group key={i} gap="xs" wrap="nowrap" align="flex-start">
+            <Textarea
+              value={d}
+              onChange={(e) => setDraft(i, e.currentTarget.value)}
+              placeholder="What you noticed: a bug, a feel, an idea"
+              autosize
+              minRows={2}
+              maxLength={4000}
+              size="sm"
+              style={{ flex: 1 }}
+              autoFocus={i === drafts.length - 1}
+              aria-label={`Playtest note ${i + 1}`}
+            />
+            <Tooltip label="Remove this note">
+              <ActionIcon variant="subtle" color="gray" mt={4} onClick={() => setDrafts((prev) => prev.filter((_, j) => j !== i))} aria-label={`Remove note ${i + 1}`}>
+                <IconX size={16} />
+              </ActionIcon>
+            </Tooltip>
+          </Group>
+        ))}
+        <Group gap="xs">
+          <Button variant="default" size="xs" leftSection={<IconPlus size={14} />} onClick={() => setDrafts((prev) => [...prev, ''])} disabled={busy}>
+            Add a note
+          </Button>
+          {drafts.length > 0 && (
+            <Button size="xs" onClick={save} loading={busy} disabled={filled.length === 0}>
+              Save
+            </Button>
+          )}
+        </Group>
+        {drafts.length > 0 && (
+          <Text size="xs" c="dimmed">
+            Saving sends each note to {release.agentName} as feedback. They show on the Feedback tab under In progress.
+          </Text>
+        )}
+      </Stack>
+    </div>
+  );
+}
+
 interface ReleaseCardProps {
   release: Release;
   latest: boolean;
   highlighted: boolean;
   collapsed: boolean;
   onToggle: () => void;
+  notes: Feedback[];
+  onNotesSaved: () => void;
 }
 
 /** A folded release: one row with its game, version, name and date. */
-function ReleaseRow({ release: r, latest, highlighted, onToggle }: ReleaseCardProps) {
+function ReleaseRow({ release: r, latest, highlighted, onToggle, notes }: ReleaseCardProps) {
   const shots = r.screenshots?.length ?? 0;
   return (
     <Paper withBorder radius="md" px="sm" py={6} className="am-release" id={`release-${r.id}`} data-latest={latest || undefined} data-highlighted={highlighted || undefined}>
@@ -101,6 +183,11 @@ function ReleaseRow({ release: r, latest, highlighted, onToggle }: ReleaseCardPr
             </Group>
           </Tooltip>
         )}
+        {notes.length > 0 && (
+          <Badge size="xs" variant="light" tt="none" visibleFrom="xs" style={{ flexShrink: 0 }}>
+            {notes.length} note{notes.length === 1 ? '' : 's'}
+          </Badge>
+        )}
         <Text size="xs" c="dimmed" style={{ flexShrink: 0, whiteSpace: 'nowrap' }}>
           {releaseDate(releasedAtOf(r))}
         </Text>
@@ -115,7 +202,7 @@ function ReleaseRow({ release: r, latest, highlighted, onToggle }: ReleaseCardPr
 }
 
 function ReleaseCard(props: ReleaseCardProps) {
-  const { release: r, latest, highlighted, collapsed, onToggle } = props;
+  const { release: r, latest, highlighted, collapsed, onToggle, notes, onNotesSaved } = props;
   if (collapsed) return <ReleaseRow {...props} />;
   const shots = asMedia(r);
   return (
@@ -196,6 +283,8 @@ function ReleaseCard(props: ReleaseCardProps) {
           </Box>
         )}
 
+        <PlaytestNotes release={r} sent={notes} onSaved={onNotesSaved} />
+
         <Text size="xs" c="dimmed" component="div">
           Released{' '}
           <Text span size="xs" fw={500} c="var(--mantine-color-text)" title={new Date(releasedAtOf(r)).toLocaleString()}>
@@ -220,6 +309,7 @@ function ReleaseCard(props: ReleaseCardProps) {
 
 export function ReleasesPage() {
   const { data, error, updatedAt, refresh } = usePolling<ReleasesResponse>('releases', loadReleases, { intervalMs: POLL_MS });
+  const notesPoll = usePolling<FeedbackListResponse>('release-notes', loadFeedback, { intervalMs: POLL_MS });
   const { params, update } = useUrlState();
   const focusId = params.get('id');
   const latestOnly = params.get('show') === 'latest';
@@ -240,6 +330,14 @@ export function ReleasesPage() {
     });
 
   const everything = useMemo(() => data?.releases ?? [], [data]);
+  // Playtest notes by release, oldest first. The Feedback list holds what isn't done and what
+  // finished lately, so notes closed long ago drop off here.
+  const notesByRelease = useMemo(() => {
+    const by = new Map<string, Feedback[]>();
+    for (const f of notesPoll.data?.feedback ?? []) if (f.release) by.set(f.release, [...(by.get(f.release) ?? []), f]);
+    for (const list of by.values()) list.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    return by;
+  }, [notesPoll.data]);
   const games = useMemo(() => choices(everything, gameOf), [everything]);
   const agentNames = useMemo(() => choices(everything, (r) => r.agentName), [everything]);
   const machines = useMemo(() => choices(everything, (r) => r.machine), [everything]);
@@ -342,6 +440,8 @@ export function ReleasesPage() {
                   highlighted={r.id === focusId}
                   collapsed={isCollapsed(r.id)}
                   onToggle={() => toggle(r.id)}
+                  notes={notesByRelease.get(r.id) ?? []}
+                  onNotesSaved={notesPoll.refresh}
                 />
               ))}
             </Stack>

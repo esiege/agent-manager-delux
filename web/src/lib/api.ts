@@ -20,6 +20,7 @@ import {
   type FeedbackListResponse,
   type FeedbackMedia,
   type RespondFeedbackInput,
+  type ReleaseNotesResponse,
   type CreateKeyResponse,
   type HideAgentsResponse,
   type KeysResponse,
@@ -149,6 +150,7 @@ export const api = {
   sendMessage: (input: SendMessageInput) => request<SendMessageResponse>('/messages', { method: 'POST', body: input }),
   feedback: (signal?: AbortSignal) => request<FeedbackListResponse>('/feedback', { signal }),
   releases: (signal?: AbortSignal) => request<ReleasesResponse>('/releases?limit=500', { signal }),
+  addReleaseNotes: (id: string, notes: string[]) => request<ReleaseNotesResponse>('/releases/notes', { method: 'POST', body: { id, notes } }),
   respondFeedback: (input: RespondFeedbackInput) =>
     request<{ feedback: Feedback }>('/feedback/respond', { method: 'POST', body: input }),
   /** Attaches a file to your answer, while the request is open. */
