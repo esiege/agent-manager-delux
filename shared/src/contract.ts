@@ -4,9 +4,9 @@
 export const API_BASE = '/api/v1';
 
 /** Bump when Docs/instructions.md changes in a way agents must act on (I-05). */
-export const INSTRUCTIONS_VERSION = 7;
+export const INSTRUCTIONS_VERSION = 8;
 /** When the instructions and agentctl last changed. web/public/update.md shows the same date. */
-export const INSTRUCTIONS_UPDATED = '2026-11-16';
+export const INSTRUCTIONS_UPDATED = '2026-11-17';
 
 export const AGENT_KINDS = ['claude-code', 'openclaw', 'service', 'other'] as const;
 export type AgentKind = (typeof AGENT_KINDS)[number];
@@ -1195,13 +1195,14 @@ export interface ReleaseLink {
   url: string;
 }
 
-/** POST /api/v1/releases, with a machine key. Sending the same game and version again updates it. */
+/** POST /api/v1/releases, with a machine key. Sending the same game and version again corrects
+ *  that release: fields left out keep what was sent before, and null (or "") clears one. */
 export interface ReleaseInput {
   agentId: string;
   /** "v0.20.0", "1.4", "2026-11-16 nightly". */
   version: string;
-  /** Where the release is: its GitHub release, store page or download. */
-  url: string;
+  /** Where the release is: its GitHub release, store page or download. Needed the first time. */
+  url?: string;
   /** A name for it ("The Winter Update"). */
   title?: string | null;
   /** The change notes, in Markdown. */
@@ -1211,6 +1212,9 @@ export interface ReleaseInput {
   links?: ReleaseLink[];
   /** The game or app released. Defaults to the agent's project. */
   project?: string | null;
+  /** When it was released (ISO 8601; a date such as "2025-03-14" will do). Defaults to now, so
+   *  give it when announcing an older release. */
+  releasedAt?: string | null;
   test?: boolean;
 }
 
@@ -1229,10 +1233,16 @@ export interface Release {
   links: ReleaseLink[];
   notes: string | null;
   comment: string | null;
+  /** When it was released. Releases sent before this existed lack it: read releasedAtOf(). */
+  releasedAt: string;
+  /** When it was first sent here. */
   createdAt: string;
   updatedAt: string;
   keyName: string;
 }
+
+/** When a release came out: its release date, or when it was sent for one sent before dates existed. */
+export const releasedAtOf = (r: Pick<Release, 'createdAt'> & { releasedAt?: string | null }): string => r.releasedAt || r.createdAt;
 
 export interface ReleaseCreateResponse extends WriteResponse<Release> {
   /** True when this game and version were sent before, so this updated it. */
@@ -1240,7 +1250,7 @@ export interface ReleaseCreateResponse extends WriteResponse<Release> {
   releaseUrl: string;
 }
 
-/** GET /api/v1/releases, as the owner or with a machine key. Newest first. */
+/** GET /api/v1/releases, as the owner or with a machine key. Newest release date first. */
 export interface ReleasesResponse {
   now: string;
   releases: Release[];

@@ -1,11 +1,13 @@
 // Releases: agents announce what they've shipped (a link, change notes and their comments) with a
 // machine key. The Releases tab reads them as the owner, who can delete one; agents read them too.
-// Sending the same game and version again updates that release instead of adding another.
+// Sending the same game and version again corrects that release instead of adding another: what's
+// left out stays as it was, so an agent can fix just the notes or the date.
 
 import { createHash, randomUUID } from 'node:crypto';
 import {
   LIMITS,
   maskSecrets,
+  releasedAtOf,
   validateRelease,
   type AgentEvent,
   type Release,
@@ -17,6 +19,7 @@ import { HttpError, fail, ok, publicOrigin, query, readJson, type Handler } from
 
 const MAX_RELEASES = 500;
 const DEFAULT_RELEASES = 200;
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** One release per game (or agent, without one) and version, whatever their case. */
 export function releaseId(project: string | null, agentName: string, version: string): string {
@@ -43,7 +46,12 @@ export const createRelease: Handler = async (req, ctx) => {
   const project = input.project ?? agent.project ?? null;
   const id = releaseId(project, agent.name, input.version);
   const existing = await ctx.store.getRelease(id);
+  const url = input.url ?? existing?.url;
+  if (!url) return fail(400, 'url is required: where the release is (its GitHub release, store page or download)');
   const at = ctx.now().toISOString();
+  if (input.releasedAt && Date.parse(input.releasedAt) > ctx.now().getTime() + DAY_MS) {
+    throw new HttpError(400, `releasedAt ${input.releasedAt} is in the future: give the date it came out`);
+  }
   const release: Release = {
     id,
     agentId: agent.id,
@@ -52,11 +60,13 @@ export const createRelease: Handler = async (req, ctx) => {
     project,
     machine: agent.machine,
     version: maskSecrets(input.version),
-    title: mask(input.title),
-    url: input.url,
-    links: (input.links ?? []).map((l) => ({ label: maskSecrets(l.label), url: l.url })),
-    notes: mask(input.notes),
-    comment: mask(input.comment),
+    title: input.title !== undefined ? mask(input.title) : (existing?.title ?? null),
+    url,
+    links: input.links ? input.links.map((l) => ({ label: maskSecrets(l.label), url: l.url })) : (existing?.links ?? []),
+    notes: input.notes !== undefined ? mask(input.notes) : (existing?.notes ?? null),
+    comment: input.comment !== undefined ? mask(input.comment) : (existing?.comment ?? null),
+    // A resend without a date keeps the one sent before.
+    releasedAt: input.releasedAt ?? (existing ? releasedAtOf(existing) : at),
     createdAt: existing?.createdAt ?? at,
     updatedAt: at,
     keyName: key.name,
@@ -88,7 +98,7 @@ export const createRelease: Handler = async (req, ctx) => {
   return ok(body, existing ? 200 : 201);
 };
 
-/** GET /api/v1/releases[?game=<name>][&limit=<n>]: newest first. */
+/** GET /api/v1/releases[?game=<name>][&limit=<n>]: newest release date first. */
 export const listReleases: Handler = async (req, ctx) => {
   await requireOwnerOrKey(req, ctx);
   const params = query(req);
@@ -98,9 +108,12 @@ export const listReleases: Handler = async (req, ctx) => {
   if (!Number.isInteger(limit) || limit < 1 || limit > MAX_RELEASES) {
     throw new HttpError(400, `limit must be a whole number from 1 to ${MAX_RELEASES}`);
   }
-  // With a game, read them all and filter: there are few releases, and a game's may be old.
-  const found = await ctx.store.listReleases(game ? MAX_RELEASES : limit + 1);
-  const matching = game ? found.filter((r) => (r.project ?? '').toLowerCase() === game) : found;
+  // Read them all, then filter and order by release date here: there are few releases, a game's
+  // may be old, and an old one announced today belongs further down. Older ones lack a date.
+  const found = (await ctx.store.listReleases(MAX_RELEASES)).map((r) => ({ ...r, releasedAt: releasedAtOf(r) }));
+  const matching = (game ? found.filter((r) => (r.project ?? '').toLowerCase() === game) : found).sort(
+    (a, b) => b.releasedAt.localeCompare(a.releasedAt) || b.createdAt.localeCompare(a.createdAt),
+  );
   const body: ReleasesResponse = {
     now: ctx.now().toISOString(),
     releases: matching.slice(0, limit),

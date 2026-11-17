@@ -644,19 +644,28 @@ export function validateRelease(body: unknown): Result<ReleaseInput> {
   return run(body, 'a release', (r) => {
     const agentId = r.requiredString('agentId', LIMITS.idLength);
     const version = r.requiredString('version', LIMITS.releaseVersionLength);
-    const url = r.requiredString('url', LIMITS.linkLength);
-    if (!HTTP_URL.test(url)) throw new Invalid('url must be an http or https URL: where the release is (its GitHub release, store page or download)');
-    const value: ReleaseInput = { agentId, version, url };
-    const text = (key: 'title' | 'notes' | 'comment' | 'project', max: number) => {
-      const v = r.optionalString(key, max)?.trim();
-      if (v) value[key] = v;
+    const value: ReleaseInput = { agentId, version };
+    // Left out: keep what an earlier send gave (the handler needs a url the first time).
+    const url = r.optionalString('url', LIMITS.linkLength)?.trim();
+    if (url) {
+      if (!HTTP_URL.test(url)) throw new Invalid('url must be an http or https URL: where the release is (its GitHub release, store page or download)');
+      value.url = url;
+    }
+    // Left out: keep. null or "": clear.
+    const text = (key: 'title' | 'notes' | 'comment', max: number) => {
+      const v = r.optionalString(key, max);
+      if (v !== undefined) value[key] = v?.trim() || null;
     };
     text('title', LIMITS.releaseTitleLength);
     text('notes', LIMITS.releaseNotesLength);
     text('comment', LIMITS.releaseCommentLength);
-    text('project', LIMITS.idLength);
+    const project = r.optionalString('project', LIMITS.idLength)?.trim();
+    if (project) value.project = project;
+    const releasedAt = r.optionalTime('releasedAt');
+    if (releasedAt) value.releasedAt = releasedAt;
     const links = r.get('links');
-    if (links !== undefined && links !== null) {
+    if (links === null) value.links = [];
+    else if (links !== undefined) {
       if (!Array.isArray(links)) throw new Invalid('links must be a list of {"label", "url"}');
       if (links.length > LIMITS.releaseLinks) throw new Invalid(`links holds at most ${LIMITS.releaseLinks}`);
       value.links = links.map(readReleaseLink);

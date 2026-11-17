@@ -101,6 +101,49 @@ describe('releases', () => {
     expect((await list()).releases).toHaveLength(1);
   });
 
+  it('corrects only what a resend gives, without needing the link again', async () => {
+    await send({ links: ['https://example.com/win.zip'] });
+    clock = new Date('2026-11-16T13:00:00Z');
+    const res = await call(createRelease, 'POST', '/api/v1/releases', {
+      key,
+      body: { agentId: SESSION, version: 'v0.20.0', notes: '- Snow, fixed', releasedAt: '2025-03-14' },
+    });
+    expect(res.status).toBe(200);
+    expect((res.body as ReleaseCreateResponse).stored).toMatchObject({
+      url: 'https://github.com/example/vanworld/releases/tag/v0.20.0',
+      title: 'The Winter Update',
+      comment: 'Try the new level first.',
+      notes: '- Snow, fixed',
+      releasedAt: '2025-03-14T00:00:00.000Z',
+      links: [{ label: 'example.com', url: 'https://example.com/win.zip' }],
+    });
+    // A later resend without a date keeps it; "" and null clear.
+    const again = await call(createRelease, 'POST', '/api/v1/releases', { key, body: { agentId: SESSION, version: 'v0.20.0', title: '', links: null } });
+    expect((again.body as ReleaseCreateResponse).stored).toMatchObject({ releasedAt: '2025-03-14T00:00:00.000Z', title: null, links: [] });
+  });
+
+  it('needs a link the first time, and refuses a release date in the future', async () => {
+    expect((await send({ url: undefined })).status).toBe(400);
+    expect((await send({ releasedAt: '2026-12-25' })).status).toBe(400);
+    expect((await send({ releasedAt: 'last tuesday' })).status).toBe(400);
+  });
+
+  it('orders by release date, so an old release announced today goes below newer ones', async () => {
+    await send({ version: 'v0.21.0', releasedAt: '2026-10-01T00:00:00Z' });
+    clock = new Date('2026-11-17T12:00:00Z');
+    await send({ version: 'v0.1.0', releasedAt: '2024-01-05' });
+    const { releases } = await list();
+    expect(releases.map((r) => r.version)).toEqual(['v0.21.0', 'v0.1.0']);
+    expect(releases[1]!.createdAt).toBe('2026-11-17T12:00:00.000Z');
+  });
+
+  it('dates a release sent before dates existed by when it was sent', async () => {
+    const { stored } = (await send()).body as ReleaseCreateResponse;
+    const { releasedAt: _, ...legacy } = stored;
+    await ctx.store.putRelease(legacy as typeof stored);
+    expect((await list()).releases[0]!.releasedAt).toBe(stored.createdAt);
+  });
+
   it('lists newest first and filters by game', async () => {
     await send();
     clock = new Date('2026-11-17T12:00:00Z');
