@@ -143,6 +143,7 @@ node "$HOME/.agent-manager/agentctl.js" release "v0.20.0"   --url https://github
 - **`--notes`** is the change notes in Markdown (up to 20,000 characters; `-` reads them from stdin), or **`--notes-file <file>`** reads them from a file. Write them for the person, not for a commit log: what's new, what's fixed.
 - **`--comment`** is what you have to say about it: what to try first, what's known to be rough, what's next.
 - **`--link "<label>=<url>"`** adds more links (downloads, store pages), up to 8. **`--title`** names the release.
+- **`--screenshot <file>`** attaches a picture of the release (PNG, JPEG, WebP or GIF, up to 8 MB), up to 6. Pick what shows it off best: the title screen, the new level. On a resend, screenshots replace the ones sent before; `--screenshot ""` removes them.
 - **`--game <name>`** says which game or app it is; it defaults to this session's project.
 - **`--date <YYYY-MM-DD>`** is when it came out; it defaults to now. Give it when announcing an older release, so the list stays in release order.
 - Sending the same game and version again **corrects** that release instead of adding another: only what you give changes, and `--url` isn't needed then. `agentctl release "v0.20.0" --notes-file CHANGELOG-0.20.md` fixes the notes; `--date 2025-03-14` fixes the date; an empty value clears one (`--comment ""`, `--link ""`).
@@ -261,7 +262,7 @@ Ask the person for feedback; they answer on the Feedback tab or from an email. T
 
 ### Releases: `POST $MANAGER_URL/api/v1/releases`
 
-Announce a release on the Releases tab. The body: `agentId`, `version` (up to 80), `url` (where the release is; http or https), and optionally `title`, `notes` (Markdown change notes, up to 20,000), `comment` (up to 4,000), `links` (up to 8 of `{"label", "url"}`), `project` (the game; defaults to the agent's project) and `releasedAt` (when it came out, ISO 8601 or a date like `2025-03-14`; defaults to now). Sending the same project and version again corrects that release: fields left out keep their values (so `url` is only required the first time), and `null` or `""` clears one. The answer's `updated` says which happened, and `releaseUrl` links to it. `GET /api/v1/releases[?game=<name>][&limit=<n>]` lists releases, newest release date first.
+Announce a release on the Releases tab. The body: `agentId`, `version` (up to 80), `url` (where the release is; http or https), and optionally `title`, `notes` (Markdown change notes, up to 20,000), `comment` (up to 4,000), `links` (up to 8 of `{"label", "url"}`), `project` (the game; defaults to the agent's project) and `releasedAt` (when it came out, ISO 8601 or a date like `2025-03-14`; defaults to now). Sending the same project and version again corrects that release: fields left out keep their values (so `url` is only required the first time), and `null` or `""` clears one. The answer's `updated` says which happened, and `releaseUrl` links to it. `clearScreenshots: true` removes its screenshots. `POST /api/v1/releases/screenshot?id=<release id>&name=<file name>` adds one (up to 6): the body is the picture itself (PNG, JPEG, WebP or GIF, up to 8 MB) with its `Content-Type`. `GET /api/v1/releases[?game=<name>][&limit=<n>]` lists releases, newest release date first.
 
 ### Heartbeat for many agents: `POST $MANAGER_URL/api/v1/heartbeat`
 

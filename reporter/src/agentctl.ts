@@ -20,6 +20,7 @@ import {
   type ReleaseCreateResponse,
   type ReleasesResponse,
   releasedAtOf,
+  LIMITS,
   type ReportInput,
   type ReportResponse,
   type ReportedState,
@@ -117,11 +118,12 @@ const HELP = `agentctl: reports the Claude Code sessions on this PC to Agent Man
       Your requests that aren't closed yet, and where each one is (--json: with answered/viewed).
   agentctl release "<version>" --url <link> [--title "<name>"] [--notes "<Markdown>"]
                   [--notes-file <file>] [--comment "<text>"] [--link "<label>=<url>"]...
-                  [--date <YYYY-MM-DD>] [--game <name>] [--json]
+                  [--screenshot <file>]... [--date <YYYY-MM-DD>] [--game <name>] [--json]
       Announces a release on the Releases tab: its version, where it is (--url: the GitHub
       release, store page or download), its change notes (Markdown; "-" reads them from stdin)
       and your comments (what to try first, what's known to be rough). --link adds more links,
-      such as downloads. --game defaults to this session's project. Sending the same game and
+      such as downloads; --screenshot attaches a picture (PNG, JPEG, WebP, GIF; up to 6).
+      --game defaults to this session's project. Sending the same game and
       version again corrects that release: only what you give changes (--url isn't needed
       then), and an empty value clears one (--comment "", --link ""). --date is when it came out
       (default: now); give it when announcing an older release, or to correct one.
@@ -675,16 +677,47 @@ async function releaseCommand(args: ParsedArgs) {
   }
   if (flags.game?.trim()) body.project = flags.game.trim();
   if (flags.date?.trim()) body.releasedAt = flags.date.trim();
+  // Screenshots given replace the ones sent before; --screenshot "" just removes them.
+  const shotPaths = (lists.screenshot ?? []).map((p) => p.trim()).filter(Boolean);
+  if (lists.screenshot) body.clearScreenshots = true;
+  if (shotPaths.length > LIMITS.releaseScreenshots) throw new UsageError(`A release holds at most ${LIMITS.releaseScreenshots} screenshots`);
+  let shots: FeedbackFile[];
+  try {
+    shots = shotPaths.map(readFeedbackFile);
+  } catch (e) {
+    throw new UsageError((e as Error).message);
+  }
+  const notPicture = shots.find((f) => !f.contentType.startsWith('image/'));
+  if (notPicture) throw new UsageError(`${notPicture.name}: a screenshot must be a PNG, JPEG, WebP or GIF picture`);
 
   const s = findCallingSession();
   const config = loadConfig();
   const res = await post<ReleaseCreateResponse>(config, '/releases', { agentId: s.agentId, ...body });
+  const attached: string[] = [];
+  const missed: string[] = [];
+  for (const f of shots) {
+    const path = `/releases/screenshot?${new URLSearchParams({ id: res.stored.id, name: f.name })}`;
+    let error: Error | null = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        await postFile(config, path, f.bytes, f.contentType);
+        error = null;
+        break;
+      } catch (e) {
+        error = e as Error;
+      }
+    }
+    if (error) missed.push(`${f.name}: ${error.message}`);
+    else attached.push(f.name);
+  }
   if ('json' in flags) {
-    console.log(JSON.stringify({ id: res.stored.id, url: res.releaseUrl, updated: res.updated }));
+    console.log(JSON.stringify({ id: res.stored.id, url: res.releaseUrl, updated: res.updated, attached, notAttached: missed }));
     return;
   }
   const name = `${res.stored.project ?? s.name} ${res.stored.version}`;
   console.log(`${res.updated ? 'Updated' : 'Announced'} ${name}: ${res.releaseUrl}`);
+  if (attached.length) console.log(`Screenshots: ${attached.join(', ')}`);
+  for (const m of missed) console.log(`Screenshot not attached: ${m}`);
   for (const w of res.warnings) console.log(`Note: ${w}`);
 }
 

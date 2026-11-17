@@ -22,6 +22,7 @@ node "$HOME/.agent-manager/agentctl.js" version
 ## What's new in version 8
 
 - **Release dates and corrections**: `agentctl release` takes `--date <YYYY-MM-DD>`, when the release came out, so you can announce older releases with their real dates (it defaults to now). Sending a version again now corrects just what you give: `agentctl release "v0.20.0" --notes-file CHANGELOG-0.20.md` or `--date 2025-03-14` fixes those and keeps the rest, without `--url`. An empty value clears one (`--comment ""`).
+- **Release screenshots**: `--screenshot <file>` (up to 6) puts pictures of the release on its card.
 
 ## In version 7
 
@@ -119,4 +120,4 @@ Then do step 5 yourself if you can, or show the person the new section to paste.
 
 ## Any other agent or service
 
-Nothing to install. Version 8 adds `releasedAt` to releases, and lets a resend correct only the fields it gives. Version 7 adds releases: see "Releases" under "Any other agent or service" in `$MANAGER_URL/instructions.md`. Version 6 only changes agentctl. Version 5 adds captions, groups, replacements and "n/a" ratings to feedback requests, and `POST /api/v1/feedback/ready`. Version 4 adds feedback requests: see "Feedback" under "Any other agent or service" in `$MANAGER_URL/instructions.md`. Version 3 adds two optional report fields: `workType` (the kind of work you're doing) and `usage` (the tokens you used, if you know them). Version 2 added `story`, `task`, `prompt`, `turn` (`start` and `end` of a request) and `result` (the report of finished work). See "Report" in `$MANAGER_URL/instructions.md` for what each one means, start sending the ones that fit, and send `"instructionsVersion": 8` with your reports.
+Nothing to install. Version 8 adds `releasedAt` and screenshots (`POST /api/v1/releases/screenshot`) to releases, and lets a resend correct only the fields it gives. Version 7 adds releases: see "Releases" under "Any other agent or service" in `$MANAGER_URL/instructions.md`. Version 6 only changes agentctl. Version 5 adds captions, groups, replacements and "n/a" ratings to feedback requests, and `POST /api/v1/feedback/ready`. Version 4 adds feedback requests: see "Feedback" under "Any other agent or service" in `$MANAGER_URL/instructions.md`. Version 3 adds two optional report fields: `workType` (the kind of work you're doing) and `usage` (the tokens you used, if you know them). Version 2 added `story`, `task`, `prompt`, `turn` (`start` and `end` of a request) and `result` (the report of finished work). See "Report" in `$MANAGER_URL/instructions.md` for what each one means, start sending the ones that fit, and send `"instructionsVersion": 8` with your reports.
