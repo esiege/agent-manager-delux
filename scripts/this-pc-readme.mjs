@@ -49,12 +49,12 @@ swap(
 );
 
 // Step 2: its pictures, their alt text, and the prompt, which is in the alt text and the hidden text.
-for (const name of ['step2-connect', 'promptbox-connect']) {
+for (const name of ['step2-your-project', 'promptbox-connect']) {
   for (const theme of ['light', 'dark']) {
     swap('step 2 picture', `/${name}-cloud-${theme}.svg`, `/${name}-pc-${theme}.svg`);
   }
 }
-swap('step 2 title', "Step 2: Connect this project. Send this to Claude Code on each PC, with your site's address.", "Step 2: Connect this project. Send this to Claude Code on this PC. It sets itself up.");
+swap('step 2 title', "Step 2: Connect your project. Send this to Claude Code on each PC, with your site's address.", "Step 2: Connect your project. Send this to Claude Code on this PC. It sets itself up.");
 for (const start of ['alt="', '<rp>']) {
   swap('step 2 prompt', `${start}Read https://&lt;your-site&gt;/instructions.md`, `${start}Read http://localhost:5173/instructions.md`);
 }
