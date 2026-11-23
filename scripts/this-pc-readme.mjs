@@ -25,7 +25,7 @@ swap(
   `<a href="${repo}#get-started">${tab('cloud', 'off', cloud)}</a>${tab('this-pc', 'on', `${pc} (selected)`)}`,
 );
 // The prompt is there twice: the visible cell, and the hidden text (<rp>) that the copy button copies.
-for (const end of ['</td>', '</rp>']) {
+for (const end of ['</code></td>', '</rp>']) {
   swap(
     'cloud prompt',
     `and deploy my own Agent Manager Delux to Azure from this folder.${end}`,
