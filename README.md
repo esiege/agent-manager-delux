@@ -29,15 +29,8 @@
 ## Get started
 
 <div><pre><a href="https://github.com/esiege/agent-manager-delux/blob/main/deploy.md"><img src="Docs/assets/step-1-paste.svg" alt="Step 1: paste a prompt to your agent. The agent will clone the repo and set up hosting." width="900"></a>
-<picture><source media="(prefers-color-scheme: light)" srcset="Docs/assets/tab-cloud-on-light.svg"><img src="Docs/assets/tab-cloud-on-dark.svg" alt="Cloud: works with every PC, and from your phone. Recommended. (selected)" width="49%"></picture><a href="https://github.com/esiege/agent-manager-delux/tree/this-pc#get-started"><picture><source media="(prefers-color-scheme: light)" srcset="Docs/assets/tab-this-pc-off-light.svg"><img src="Docs/assets/tab-this-pc-off-dark.svg" alt="This PC: only reachable from this PC. Free." width="49%"></picture></a>
-<div>
-
-```text
-Read https://raw.githubusercontent.com/esiege/agent-manager-delux/main/deploy.md
-and deploy my own Agent Manager Delux to Azure from this folder.
-```
-
-</div></pre></div>
+<picture><source media="(prefers-color-scheme: light)" srcset="Docs/assets/tab-cloud-on-light.svg"><img src="Docs/assets/tab-cloud-on-dark.svg" alt="Cloud: works with every PC, and from your phone. Recommended. (selected)" width="50%"></picture><a href="https://github.com/esiege/agent-manager-delux/tree/this-pc#get-started"><picture><source media="(prefers-color-scheme: light)" srcset="Docs/assets/tab-this-pc-off-light.svg"><img src="Docs/assets/tab-this-pc-off-dark.svg" alt="This PC: only reachable from this PC. Free." width="50%"></picture></a><pre lang="text"><code>Read https://raw.githubusercontent.com/esiege/agent-manager-delux/main/deploy.md
+and deploy my own Agent Manager Delux to Azure from this folder.</code></pre></pre></div>
 
 <a href="https://azure.microsoft.com/free"><img src="Docs/assets/azure-note.svg" alt="You need an Azure account (free to open). Usually a few cents a month to run. Opens the Azure sign-up page." width="900"></a>
 
