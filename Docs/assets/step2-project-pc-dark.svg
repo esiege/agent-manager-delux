@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 128" width="900" height="128" role="img" aria-label="Step 2: Connect this PC. Send this to Claude Code on this PC. It sets itself up.">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 128" width="900" height="128" role="img" aria-label="Step 2: Connect this project. Send this to Claude Code on this PC. It sets itself up.">
   <path d="M0 128V7A7 7 0 0 1 7 0H893A7 7 0 0 1 900 7V128z" fill="#151b23"/>
   <g transform="translate(17,17) scale(0.96222)">
   <defs>
@@ -12,7 +12,7 @@
   <rect x=".5" y=".5" width="899" height="103" rx="16" fill="url(#bg)"/>
   <circle cx="48" cy="52" r="22" fill="url(#accent)"/>
   <text x="48" y="59" text-anchor="middle" style="font-size:20px;font-weight:700;fill:#fff">2</text>
-  <text x="90" y="46" style="font-size:24px;font-weight:700">Connect this PC</text>
+  <text x="90" y="46" style="font-size:24px;font-weight:700">Connect this project</text>
   <text x="90" y="74" style="font-size:16px;fill:#9fb0c6">Send this to Claude Code on this PC. It sets itself up.</text>
   <rect x="640" y="14" width="244" height="76" rx="10" fill="#0b1019" stroke="#2b3850"/>
   <circle cx="660" cy="33" r="5" fill="#51cf66"/><rect x="674" y="28" width="100" height="10" rx="5" fill="#3a4a66"/><text x="870" y="37" text-anchor="end" style="font-size:12px;fill:#51cf66">working</text>
