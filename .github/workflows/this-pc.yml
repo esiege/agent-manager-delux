@@ -1,0 +1,38 @@
+# Keeps the this-pc branch equal to main, but with the README's This PC tab selected.
+# The branch is generated: never edit it by hand or merge it into main.
+name: This PC tab
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: this-pc
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Select the This PC tab
+        run: node scripts/this-pc-readme.mjs
+      - name: Update the this-pc branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add README.md
+          tree=$(git write-tree)
+          parents="-p HEAD"
+          if old=$(git rev-parse -q --verify refs/remotes/origin/this-pc); then
+            if [ "$(git rev-parse "$old^{tree}")" = "$tree" ]; then echo "Already up to date"; exit 0; fi
+            parents="-p $old -p HEAD"
+          fi
+          commit=$(git commit-tree "$tree" $parents -m "README with the This PC tab selected, from main")
+          git push origin "$commit:refs/heads/this-pc"
