@@ -28,35 +28,39 @@
 
 ## Get started
 
-<p align="center">
-  <img src="Docs/assets/get-started.svg" alt="1. Paste one prompt. 2. Copy one sentence. 3. Send it to your agent." width="900">
-</p>
+<a href="deploy.md"><img src="Docs/assets/get-started-step-1.svg" alt="Step 1: paste one prompt in Claude Code, in an empty folder. About 10 minutes." width="900"></a>
 
-### 1. Paste
+Pick one, and use the copy button at its top right:
 
-Make an empty folder, open Claude Code in it, and paste one line.
-
-**☁️ Cloud** (recommended: every PC, and your phone)
+<details open>
+<summary><b>☁️ Cloud</b>: every PC and your phone. Recommended.</summary>
 
 ```text
-Read https://raw.githubusercontent.com/esiege/agent-manager-delux/main/deploy.md and deploy my own Agent Manager Delux to Azure from this folder.
+Read https://raw.githubusercontent.com/esiege/agent-manager-delux/main/deploy.md
+and deploy my own Agent Manager Delux to Azure from this folder.
 ```
 
-**💻 This PC** (free, this PC only)
+Needs a free [Azure account](https://azure.microsoft.com/free), and costs cents a month.
+
+</details>
+
+<details>
+<summary><b>💻 This PC</b>: this PC only. Free.</summary>
 
 ```text
-Read https://raw.githubusercontent.com/esiege/agent-manager-delux/main/deploy.md and set up Agent Manager Delux to run on this PC from this folder.
+Read https://raw.githubusercontent.com/esiege/agent-manager-delux/main/deploy.md
+and set up Agent Manager Delux to run on this PC from this folder.
 ```
 
-Claude Code does the rest and asks when it needs you. About 10 minutes. Cloud needs a free [Azure account](https://azure.microsoft.com/free) and costs cents a month.
+</details>
 
-### 2. Copy
+<br>
 
-Open your site's **Instructions** tab and copy the sentence. It has your address filled in.
+<a href="web/public/instructions.md"><img src="Docs/assets/get-started-step-2.svg" alt="Step 2: connect your PCs by sending your agent one sentence. It sets itself up." width="900"></a>
 
-### 3. Send
+On your new site, copy the sentence from the **Instructions** tab and send it to Claude Code on each PC. The PC's sessions then appear on the **Agents** tab.
 
-Send it to Claude Code on each PC. The agent sets itself up and appears on the **Agents** tab.
+<br>
 
 <details>
 <summary><b>Other ways to set it up</b></summary>
