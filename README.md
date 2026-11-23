@@ -28,39 +28,45 @@
 
 ## Get started
 
+<table>
+<tr><td>
+
 <a href="deploy.md"><img src="Docs/assets/get-started-step-1.svg" alt="Step 1: paste one prompt in Claude Code, in an empty folder. About 10 minutes." width="900"></a>
 
-Pick one, and use the copy button at its top right:
+</td></tr>
+<tr><td>
 
-<details open>
-<summary><b>☁️ Cloud</b>: every PC and your phone. Recommended.</summary>
+<a href="deploy.md#in-the-cloud"><img src="Docs/assets/get-started-cloud.svg" alt="Cloud: every PC and your phone. Recommended. Copy the prompt below." width="900"></a>
 
 ```text
 Read https://raw.githubusercontent.com/esiege/agent-manager-delux/main/deploy.md
 and deploy my own Agent Manager Delux to Azure from this folder.
 ```
 
-Needs a free [Azure account](https://azure.microsoft.com/free), and costs cents a month.
+Needs a free [Azure account](https://azure.microsoft.com/free).
 
-</details>
+</td></tr>
+<tr><td>
 
-<details>
-<summary><b>💻 This PC</b>: this PC only. Free.</summary>
+<a href="deploy.md#on-this-pc"><img src="Docs/assets/get-started-this-pc.svg" alt="This PC: this PC only. Free. Copy the prompt below." width="900"></a>
 
 ```text
 Read https://raw.githubusercontent.com/esiege/agent-manager-delux/main/deploy.md
 and set up Agent Manager Delux to run on this PC from this folder.
 ```
 
-</details>
+</td></tr>
+</table>
 
-<br>
+<table>
+<tr><td>
 
 <a href="web/public/instructions.md"><img src="Docs/assets/get-started-step-2.svg" alt="Step 2: connect your PCs by sending your agent one sentence. It sets itself up." width="900"></a>
 
 On your new site, copy the sentence from the **Instructions** tab and send it to Claude Code on each PC. The PC's sessions then appear on the **Agents** tab.
 
-<br>
+</td></tr>
+</table>
 
 <details>
 <summary><b>Other ways to set it up</b></summary>
