@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 128" width="900" height="128" role="img" aria-label="Step 1: paste a prompt to your agent. The agent will clone the repo and set up hosting.">
-  <path d="M0 128V7A7 7 0 0 1 7 0H893A7 7 0 0 1 900 7V128z" fill="#151b23"/>
+  <path d="M0 128V7A7 7 0 0 1 7 0H893A7 7 0 0 1 900 7V128z" fill="#262e3a"/>
   <g transform="translate(17,17) scale(0.96222)">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1b2433"/><stop offset="1" stop-color="#0f1520"/></linearGradient>
