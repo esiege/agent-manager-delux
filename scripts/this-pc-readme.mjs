@@ -14,7 +14,7 @@ function swap(what, from, to) {
 const repo = 'https://github.com/esiege/agent-manager-delux';
 const tab = (name, state, alt) => {
   const file = `Docs/assets/tab-${name}-${state}`;
-  return `<picture><source media="(prefers-color-scheme: light)" srcset="${file}-light.svg"><img src="${file}-dark.svg" alt="${alt}" width="49%"></picture>`;
+  return `<picture><source media="(prefers-color-scheme: light)" srcset="${file}-light.svg"><img src="${file}-dark.svg" alt="${alt}" width="50%"></picture>`;
 };
 const cloud = 'Cloud: works with every PC, and from your phone. Recommended.';
 const pc = 'This PC: only reachable from this PC. Free.';
@@ -31,6 +31,14 @@ swap(
 );
 const note = text.match(/<a href="https:\/\/azure\.microsoft\.com\/free"><img [^\n]*<\/a>\n\n/);
 if (!note) throw new Error('README.md: no Azure note');
-swap('Azure note', note[0], '');
+// Same height as the Azure note, so the page doesn't jump between tabs.
+const pcNote = 'No account needed. Phone alerts still work, through ntfy. Opens the ntfy site.';
+swap(
+  'Azure note',
+  note[0],
+  `<a href="https://ntfy.sh"><img src="Docs/assets/pc-note.svg" alt="${pcNote}" width="900"></a>
+
+`,
+);
 
 writeFileSync('README.md', text);
