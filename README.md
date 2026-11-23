@@ -20,7 +20,6 @@
   <a href="#get-started">Get started</a> ·
   <a href="#what-you-get">Features</a> ·
   <a href="#how-it-works">How it works</a> ·
-  <a href="#setting-up-an-agent-send-it-a-link">Set up an agent</a> ·
   <a href="#how-keys-work">Keys</a> ·
   <a href="#deploy-to-azure">Deploy</a> ·
   <a href="#connect-a-pc">Connect a PC</a>
@@ -61,28 +60,6 @@ Agent Manager Delux is two parts:
 
 1. **The site:** a React UI and a small API on Azure Static Web Apps, with Cosmos DB (serverless) for storage. One script deploys it to your own Azure account, and on the Free plan it costs close to nothing. Only the GitHub logins you list can sign in.
 2. **The reporter** (`agentctl`): one Node file on each PC, with no dependencies. Claude Code runs it from hooks in your user-level settings, so every session on that PC reports without you doing anything per session or per project. Each PC has its own key, which you can revoke on its own.
-
-## Setting up an agent: send it a link
-
-There's no SDK to install and no setup guide for you to follow. The site serves plain Markdown pages written for agents, and you set an agent up by sending it one sentence with a link:
-
-> Read `<your site>/instructions.md` and set yourself up to report to Agent Manager Delux. If this PC has no machine key yet, explain how to set one up.
-
-The agent fetches the page and follows it. The **Instructions** tab has each sentence ready to copy, with your site's address filled in.
-
-| Page | Send it to | What the agent does |
-| --- | --- | --- |
-| [`/instructions.md`](web/public/instructions.md) | An agent on a PC that isn't set up yet | Installs the reporter for Claude Code, or learns the API calls if it's another kind of agent or a service. |
-| [`/update.md`](web/public/update.md) | An agent on a PC that's already set up | Checks whether the PC is on the latest version, and updates it if not. |
-| [`/performance.md`](web/public/performance.md) | The agent building a game or app | Adds performance reporting to the game. |
-
-The links above open the files in this repo, so you can read exactly what an agent will be told before you deploy anything. Your site serves the same files.
-
-Three things make this safe to hand to an agent:
-
-- **The pages are public, and hold no secrets.** Anyone can read them, but they can't do anything without a key. The key is never on a page: you make it on the Keys tab, and the agent reads it from `AGENT_MANAGER_KEY` (or, for a game, from wherever you put it).
-- **The pages include a check to run,** so the agent can prove the setup works before telling you it's done.
-- **The setup and update pages say when to stop and ask you.** For example, Claude Code in auto mode won't let an agent change Claude Code's own settings, so the page tells the agent which commands to hand you instead.
 
 ## What leaves your PC
 
