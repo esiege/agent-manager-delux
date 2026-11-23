@@ -91,7 +91,7 @@ If you run agents in several windows on more than one machine, you lose track of
 ## How it works
 
 ```mermaid
-flowchart LR
+flowchart TB
     subgraph PCs["Your PCs"]
         CC["Claude Code sessions"] -- hooks --> R["agentctl reporter"]
     end
