@@ -39,11 +39,11 @@ for (const theme of ['light', 'dark']) {
 const note = text.match(/<a href="https:\/\/azure\.microsoft\.com\/free"><picture>[^\n]*<\/a>\n\n/);
 if (!note) throw new Error('README.md: no Azure note');
 // Same height as the Azure note, so the page doesn't jump between tabs.
-const pcNote = 'No cloud account needed. Phone alerts still work, through ntfy. Opens the ntfy site.';
+const pcNote = 'No account needed. Your dashboard will run on localhost.';
 swap(
   'Azure note',
   note[0],
-  `<a href="https://ntfy.sh"><picture><source media="(prefers-color-scheme: light)" srcset="Docs/assets/note-pc-light.svg"><img src="Docs/assets/note-pc-dark.svg" alt="${pcNote}" width="900"></picture></a>
+  `<picture><source media="(prefers-color-scheme: light)" srcset="Docs/assets/note-local-light.svg"><img src="Docs/assets/note-local-dark.svg" alt="${pcNote}" width="900"></picture>
 
 `,
 );
