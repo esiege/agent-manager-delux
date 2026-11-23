@@ -24,7 +24,11 @@ swap(
   `${tab('cloud', 'on', `${cloud} (selected)`)}<a href="${repo}/tree/this-pc#get-started">${tab('this-pc', 'off', pc)}</a>`,
   `<a href="${repo}#get-started">${tab('cloud', 'off', cloud)}</a>${tab('this-pc', 'on', `${pc} (selected)`)}`,
 );
-swap('cloud prompt', 'and deploy it to Azure</code>', 'and run it on this PC</code>');
+swap(
+  'cloud prompt',
+  'and deploy my own Agent Manager Delux to Azure from this folder.</code>',
+  'and set up Agent Manager Delux to run on this PC from this folder.</code>',
+);
 const note = text.match(/<a href="https:\/\/azure\.microsoft\.com\/free"><picture>[^\n]*<\/a>\n\n/);
 if (!note) throw new Error('README.md: no Azure note');
 // Same height as the Azure note, so the page doesn't jump between tabs.
