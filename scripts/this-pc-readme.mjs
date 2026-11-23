@@ -25,14 +25,14 @@ swap(
   `<a href="${repo}#get-started">${tab('cloud', 'off', cloud)}</a>${tab('this-pc', 'on', `${pc} (selected)`)}`,
 );
 swap('cloud prompt', 'and deploy it to Azure</code>', 'and run it on this PC</code>');
-const note = text.match(/<a href="https:\/\/azure\.microsoft\.com\/free"><img [^\n]*<\/a>\n\n/);
+const note = text.match(/<a href="https:\/\/azure\.microsoft\.com\/free"><picture>[^\n]*<\/a>\n\n/);
 if (!note) throw new Error('README.md: no Azure note');
 // Same height as the Azure note, so the page doesn't jump between tabs.
-const pcNote = 'No account needed. Phone alerts still work, through ntfy. Opens the ntfy site.';
+const pcNote = 'No cloud account needed. Phone alerts still work, through ntfy. Opens the ntfy site.';
 swap(
   'Azure note',
   note[0],
-  `<a href="https://ntfy.sh"><img src="Docs/assets/pc-note.svg" alt="${pcNote}" width="900"></a>
+  `<a href="https://ntfy.sh"><picture><source media="(prefers-color-scheme: light)" srcset="Docs/assets/note-pc-light.svg"><img src="Docs/assets/note-pc-dark.svg" alt="${pcNote}" width="900"></picture></a>
 
 `,
 );
