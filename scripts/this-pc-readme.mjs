@@ -24,11 +24,12 @@ swap(
   `${tab('cloud', 'on', `${cloud} (selected)`)}<a href="${repo}/tree/this-pc#get-started">${tab('this-pc', 'off', pc)}</a>`,
   `<a href="${repo}#get-started">${tab('cloud', 'off', cloud)}</a>${tab('this-pc', 'on', `${pc} (selected)`)}`,
 );
-swap(
-  'cloud prompt',
-  'and deploy my own Agent Manager Delux to Azure from this folder.',
-  'and set up Agent Manager Delux to run on this PC from this folder.',
-);
+// The prompt is there twice: as the image's alt text, and as the hidden text the copy button copies.
+const cloudPrompt = 'and deploy my own Agent Manager Delux to Azure from this folder.';
+const pcPrompt = 'and set up Agent Manager Delux to run on this PC from this folder.';
+swap('prompt image text', `${cloudPrompt}" width`, `${pcPrompt}" width`);
+swap('prompt to copy', `${cloudPrompt}</rp>`, `${pcPrompt}</rp>`);
+for (const theme of ['light', 'dark']) swap(`${theme} prompt image`, `prompt-cloud-${theme}.svg`, `prompt-this-pc-${theme}.svg`);
 const note = text.match(/<a href="https:\/\/azure\.microsoft\.com\/free"><img [^\n]*<\/a>\n\n/);
 if (!note) throw new Error('README.md: no Azure note');
 // Same height as the Azure note, so the page doesn't jump between tabs.
