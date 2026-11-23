@@ -1,4 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 450 72" width="450" height="72" role="img" aria-label="Cloud: works with every PC, and from your phone. Recommended.">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 450 70" width="450" height="70" role="img" aria-label="Cloud: works with every PC, and from your phone. Recommended.">
+  <rect width="450" height="70" fill="#f6f8fa"/>
+  <g transform="translate(17,0) scale(0.96222)">
   <style>text{font-family:-apple-system,'Segoe UI',Helvetica,Arial,sans-serif}</style>
   <rect y="71" width="450" height="1" fill="#d1d9e0"/>
   <path d="M30 46a10 10 0 0 1 0-20 14 14 0 0 1 26-2 11 11 0 0 1 0 22z" fill="#59636e"/>
@@ -6,4 +8,5 @@
   <text x="86" y="53" style="font-size:14px;fill:#59636e">Works with every PC, and from your phone.</text>
   <rect x="332" y="13" width="104" height="24" rx="12" fill="none" stroke="#237a36"/>
   <text x="384" y="29.500" text-anchor="middle" style="font-size:12px;font-weight:700;fill:#237a36">Recommended</text>
+</g>
 </svg>
