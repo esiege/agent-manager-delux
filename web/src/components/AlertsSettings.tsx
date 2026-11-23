@@ -330,7 +330,11 @@ export function AlertsSettings() {
         </Button>
       </Group>
       <Text size="sm" c="dimmed">
-        Alerts go to your phone through ntfy, which is free: install the ntfy app (Android/iOS), then subscribe to the topic
+        Alerts go to your phone through{' '}
+        <Anchor href="https://ntfy.sh" target="_blank" rel="noopener noreferrer" size="sm">
+          ntfy
+        </Anchor>
+        , which is free: install the ntfy app (Android/iOS), then subscribe to the topic
         below. They arrive like texts when an agent finishes a request, needs you, fails, or is cut off mid-request. Anyone
         who knows a topic can read it, so topics here are long and random; keep them to yourself. To get feedback requests by
         email instead, add your address at the bottom of the{' '}
