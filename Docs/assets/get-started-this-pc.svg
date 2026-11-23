@@ -9,7 +9,6 @@
   <text x="90" y="50" style="font-size:14px;fill:#9fb0c6">Only reachable from this PC.</text>
   <rect x="610" y="18" width="126" height="28" rx="14" fill="none" stroke="#fcc419"/>
   <text x="673" y="37" text-anchor="middle" style="font-size:13px;font-weight:700;fill:#fcc419">Free</text>
-  <rect x="756" y="14" width="126" height="36" rx="18" fill="url(#accent)"/>
-  <text x="806" y="37" text-anchor="middle" style="font-size:14px;font-weight:700;fill:#fff">Copy below</text>
-  <path d="M862 25V38M857 33.500L862 38.500L867 33.500" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="848" y="37" text-anchor="end" style="font-size:13px;fill:#9fb0c6">Copy icon</text>
+  <path d="M866 24V38M861 33.500L866 38.500L871 33.500" fill="none" stroke="#9fb0c6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>

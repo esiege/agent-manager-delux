@@ -31,12 +31,12 @@
 <table>
 <tr><td>
 
-<a href="deploy.md"><img src="Docs/assets/get-started-step-1.svg" alt="Step 1: paste one prompt in Claude Code, in an empty folder. About 10 minutes." width="900"></a>
+<a href="https://github.com/esiege/agent-manager-delux/blob/main/deploy.md"><img src="Docs/assets/get-started-step-1.svg" alt="Step 1: paste one prompt in Claude Code, in an empty folder. About 10 minutes." width="900"></a>
 
 </td></tr>
 <tr><td>
 
-<a href="deploy.md#in-the-cloud"><img src="Docs/assets/get-started-cloud.svg" alt="Cloud: every PC and your phone. Recommended. Copy the prompt below." width="900"></a>
+<a><img src="Docs/assets/get-started-cloud.svg" alt="Cloud: every PC and your phone. Recommended. Copy the prompt below." width="900"></a>
 
 ```text
 Read https://raw.githubusercontent.com/esiege/agent-manager-delux/main/deploy.md
@@ -48,7 +48,7 @@ You need an [Azure account](https://azure.microsoft.com/free), which is free to 
 </td></tr>
 <tr><td>
 
-<a href="deploy.md#on-this-pc"><img src="Docs/assets/get-started-this-pc.svg" alt="This PC: this PC only. Free. Copy the prompt below." width="900"></a>
+<a><img src="Docs/assets/get-started-this-pc.svg" alt="This PC: this PC only. Free. Copy the prompt below." width="900"></a>
 
 ```text
 Read https://raw.githubusercontent.com/esiege/agent-manager-delux/main/deploy.md
@@ -61,7 +61,7 @@ and set up Agent Manager Delux to run on this PC from this folder.
 <table>
 <tr><td>
 
-<a href="web/public/instructions.md"><img src="Docs/assets/get-started-step-2.svg" alt="Step 2: connect your PCs by sending your agent one sentence. It sets itself up." width="900"></a>
+<a href="https://github.com/esiege/agent-manager-delux/blob/main/web/public/instructions.md"><img src="Docs/assets/get-started-step-2.svg" alt="Step 2: connect your PCs by sending your agent one sentence. It sets itself up." width="900"></a>
 
 On your new site, copy the sentence from the **Instructions** tab and send it to Claude Code on each PC. The PC's sessions then appear on the **Agents** tab.
 
