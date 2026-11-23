@@ -13,7 +13,7 @@ function swap(what, from, to) {
 
 const repo = 'https://github.com/esiege/agent-manager-delux';
 const tab = (name, state, alt) => {
-  const file = `${repo}/raw/main/Docs/assets/step1-choice-${name}-${state}`;
+  const file = `${repo}/raw/main/Docs/assets/step1-mode-${name}-${state}`;
   return `<picture><source media="(prefers-color-scheme: light)" srcset="${file}-light.svg"><img src="${file}-dark.svg" alt="${alt}" width="50%" align="top"></picture>`;
 };
 const cloud = 'Cloud: works with every PC, and from your phone. Recommended.';
@@ -25,7 +25,7 @@ swap(
   `<a href="${repo}#get-started">${tab('cloud', 'off', cloud)}</a>${tab('this-pc', 'on', `${pc} (selected)`)}`,
 );
 // The prompt is there three times: drawn in the image, as its alt text, and as the hidden text (<rp>)
-// that the copy button copies. Keep Docs/assets/prompt-{cloud,pc}-*.svg in step with the wording here.
+// that the copy button copies. Keep Docs/assets/promptbox-{cloud,pc}-*.svg in step with the wording here.
 for (const end of ['" width="762"', '</rp>']) {
   swap(
     'cloud prompt',
@@ -34,7 +34,7 @@ for (const end of ['" width="762"', '</rp>']) {
   );
 }
 for (const theme of ['light', 'dark']) {
-  swap('prompt image', `/prompt-cloud-${theme}.svg`, `/prompt-pc-${theme}.svg`);
+  swap('prompt image', `/promptbox-cloud-${theme}.svg`, `/promptbox-pc-${theme}.svg`);
 }
 const note = text.match(/<a href="https:\/\/azure\.microsoft\.com\/free"><picture>[^\n]*<\/a>\n\n/);
 if (!note) throw new Error('README.md: no Azure note');
