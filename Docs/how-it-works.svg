@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 240" width="900" height="240" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="14" text-anchor="middle" fill="#e6edf3">
+  <title>How Agent Manager Delux works</title>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M0 0 10 5 0 10z" fill="#8b949e"/>
+    </marker>
+  </defs>
+  <rect x="0.5" y="0.5" width="899" height="239" rx="10" fill="#0d1117" stroke="#30363d"/>
+  <rect x="16" y="16" width="320" height="116" rx="8" fill="#161b22" stroke="#30363d"/>
+  <text x="176" y="38" fill="#8b949e">Your PCs</text>
+
+  <g fill="none" stroke="#8b949e" stroke-width="1.5">
+    <path d="M140 84H212" marker-end="url(#a)"/>
+    <path d="M320 84H376V108H428" marker-end="url(#a)"/>
+    <path d="M320 182H376V132H428" marker-end="url(#a)"/>
+    <path d="M540 108H580V45H620"/>
+    <path d="M540 120H620" marker-end="url(#a)"/>
+    <path d="M540 132H580V195H620" stroke-dasharray="4 4" marker-end="url(#a)"/>
+    <path d="M730 120H826" marker-end="url(#a)"/>
+  </g>
+
+  <g fill="#21262d" stroke="#6e7681">
+    <rect x="30" y="56" width="110" height="56" rx="6"/>
+    <rect x="212" y="56" width="108" height="56" rx="6"/>
+    <rect x="212" y="158" width="108" height="48" rx="6"/>
+    <rect x="428" y="88" width="112" height="64" rx="6"/>
+    <path d="M620 28v34a55 8 0 0 0 110 0v-34"/>
+    <ellipse cx="675" cy="28" rx="55" ry="8"/>
+    <rect x="620" y="94" width="110" height="52" rx="6"/>
+    <rect x="620" y="172" width="110" height="46" rx="6"/>
+    <circle cx="854" cy="120" r="28"/>
+  </g>
+
+  <text x="85" y="80">Claude Code</text><text x="85" y="98">sessions</text>
+  <text x="266" y="80">agentctl</text><text x="266" y="98">reporter</text>
+  <text x="266" y="187">Games and apps</text>
+  <text x="484" y="116">API</text><text x="484" y="134" font-size="12">Azure Functions</text>
+  <text x="675" y="55">Cosmos DB</text>
+  <text x="675" y="116">Dashboard</text><text x="675" y="134" font-size="12">React</text>
+  <text x="675" y="200">Your phone</text>
+  <text x="854" y="125">You</text>
+
+  <g font-size="12" fill="#8b949e">
+    <text x="174" y="77">hooks</text>
+    <text x="384" y="76">machine key</text>
+    <text x="378" y="200">game key</text>
+    <text x="580" y="212">ntfy</text>
+    <text x="777" y="94">GitHub</text><text x="777" y="110">sign-in</text>
+  </g>
+</svg>

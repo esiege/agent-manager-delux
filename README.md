@@ -90,18 +90,7 @@ If you run agents in several windows on more than one machine, you lose track of
 
 ## How it works
 
-```mermaid
-flowchart TB
-    subgraph PCs["Your PCs"]
-        CC["Claude Code sessions"] -- hooks --> R["agentctl reporter"]
-    end
-    G["Games and apps"] -- game key --> API
-    R -- machine key --> API["API<br>(Azure Functions)"]
-    API --- DB[("Cosmos DB")]
-    API --> UI["Dashboard<br>(React)"]
-    API -. ntfy .-> P["Your phone"]
-    UI -- GitHub sign-in --> You(("You"))
-```
+![Claude Code sessions on your PCs report through agentctl with a machine key, and games and apps report with a game key, to the API on Azure Functions. The API stores data in Cosmos DB, serves the dashboard you sign in to with GitHub, and notifies your phone through ntfy.](Docs/how-it-works.svg)
 
 Agent Manager Delux is two parts:
 
