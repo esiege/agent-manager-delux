@@ -28,13 +28,7 @@
 
 ## Get started
 
-<table>
-<tr><td>
-
 <a href="https://github.com/esiege/agent-manager-delux/blob/main/deploy.md"><img src="Docs/assets/get-started-step-1.svg" alt="Step 1: paste one prompt in Claude Code, in an empty folder. About 10 minutes." width="900"></a>
-
-</td></tr>
-<tr><td>
 
 <a href="#get-started"><img src="Docs/assets/get-started-cloud.svg" alt="Cloud: every PC and your phone. Recommended. Copy the prompt below." width="900"></a>
 
@@ -43,10 +37,7 @@ Read https://raw.githubusercontent.com/esiege/agent-manager-delux/main/deploy.md
 and deploy my own Agent Manager Delux to Azure from this folder.
 ```
 
-You need an [Azure account](https://azure.microsoft.com/free), which is free to open. Running Agent Manager Delux on it usually costs a few cents a month.
-
-</td></tr>
-<tr><td>
+<a href="https://azure.microsoft.com/free"><img src="Docs/assets/get-started-azure-note.svg" alt="You need an Azure account, which is free to open. Running the site usually costs a few cents a month. Opens the Azure sign-up page." width="900"></a>
 
 <a href="#get-started"><img src="Docs/assets/get-started-this-pc.svg" alt="This PC: this PC only. Free. Copy the prompt below." width="900"></a>
 
@@ -55,18 +46,9 @@ Read https://raw.githubusercontent.com/esiege/agent-manager-delux/main/deploy.md
 and set up Agent Manager Delux to run on this PC from this folder.
 ```
 
-</td></tr>
-</table>
-
-<table>
-<tr><td>
-
 <a href="https://github.com/esiege/agent-manager-delux/blob/main/web/public/instructions.md"><img src="Docs/assets/get-started-step-2.svg" alt="Step 2: connect your PCs by sending your agent one sentence. It sets itself up." width="900"></a>
 
-On your new site, copy the sentence from the **Instructions** tab and send it to Claude Code on each PC. The PC's sessions then appear on the **Agents** tab.
-
-</td></tr>
-</table>
+<a href="https://github.com/esiege/agent-manager-delux/blob/main/web/public/instructions.md"><img src="Docs/assets/get-started-connect-note.svg" alt="On your new site, copy the sentence from the Instructions tab and send it to Claude Code on each PC. Its sessions then appear on the Agents tab." width="900"></a>
 
 <details>
 <summary><b>Update, move, or set it up by hand</b></summary>
