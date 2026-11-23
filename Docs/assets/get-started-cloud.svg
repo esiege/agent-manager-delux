@@ -6,7 +6,7 @@
   <rect x=".5" y=".5" width="899" height="63" rx="12" fill="#18202e" stroke="#2b3850"/>
   <path d="M38 44a10 10 0 0 1 0-20 14 14 0 0 1 26-2 11 11 0 0 1 0 22z" fill="#74c0fc"/>
   <text x="90" y="29" style="font-size:18px;font-weight:700">Cloud</text>
-  <text x="90" y="50" style="font-size:14px;fill:#9fb0c6">Every PC, and your phone. Cents a month.</text>
+  <text x="90" y="50" style="font-size:14px;fill:#9fb0c6">Works with every PC, and from your phone.</text>
   <rect x="610" y="18" width="126" height="28" rx="14" fill="none" stroke="#51cf66"/>
   <text x="673" y="37" text-anchor="middle" style="font-size:13px;font-weight:700;fill:#51cf66">Recommended</text>
   <rect x="756" y="14" width="126" height="36" rx="18" fill="url(#accent)"/>

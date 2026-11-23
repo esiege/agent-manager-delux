@@ -43,7 +43,7 @@ Read https://raw.githubusercontent.com/esiege/agent-manager-delux/main/deploy.md
 and deploy my own Agent Manager Delux to Azure from this folder.
 ```
 
-Needs a free [Azure account](https://azure.microsoft.com/free).
+You need an [Azure account](https://azure.microsoft.com/free), which is free to open. Running Agent Manager Delux on it usually costs a few cents a month.
 
 </td></tr>
 <tr><td>
