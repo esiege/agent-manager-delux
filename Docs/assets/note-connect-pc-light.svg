@@ -1,6 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 36" width="900" height="36" role="img" aria-label="Keep the dashboard running. This PC's sessions then appear on its Agents tab.">
-  <style>text{font-family:-apple-system,'Segoe UI',Helvetica,Arial,sans-serif}</style>
-  <circle cx="28" cy="18" r="10" fill="none" stroke="#1c7ed6" stroke-width="2"/>
-  <text x="28" y="23" text-anchor="middle" style="font-size:14px;font-weight:700;fill:#1c7ed6">i</text>
-  <text x="50" y="23" style="font-size:15px;fill:#59636e"><tspan font-weight="600" fill="#1f2328">Keep the dashboard running.</tspan> This PC's sessions then appear on its Agents tab.</text>
-</svg>
