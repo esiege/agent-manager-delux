@@ -28,39 +28,29 @@
 
 ## Get started
 
-<table>
-<tr><td>
-
-<a href="https://github.com/esiege/agent-manager-delux/blob/main/deploy.md"><img src="Docs/assets/get-started-step-1.svg" alt="Step 1: paste one prompt in Claude Code, in an empty folder. About 10 minutes." width="900"></a>
-
+<div><pre><a href="https://github.com/esiege/agent-manager-delux/blob/main/deploy.md"><img src="Docs/assets/get-started-step-1.svg" alt="Step 1: paste one prompt in Claude Code, in an empty folder. About 10 minutes." width="900"></a>
 <a href="#get-started"><picture><source media="(prefers-color-scheme: light)" srcset="Docs/assets/option-cloud-light.svg"><img src="Docs/assets/option-cloud-dark.svg" alt="Cloud: every PC and your phone. Recommended." width="900"></picture></a>
+<div>
 
 ```text
 Read https://raw.githubusercontent.com/esiege/agent-manager-delux/main/deploy.md
 and deploy my own Agent Manager Delux to Azure from this folder.
 ```
 
+</div>
 <a href="https://azure.microsoft.com/free"><img src="Docs/assets/azure-note.svg" alt="You need an Azure account (free to open). Usually a few cents a month to run. Opens the Azure sign-up page." width="900"></a>
-
 <a href="#get-started"><picture><source media="(prefers-color-scheme: light)" srcset="Docs/assets/option-this-pc-light.svg"><img src="Docs/assets/option-this-pc-dark.svg" alt="This PC: this PC only. Free." width="900"></picture></a>
+<div>
 
 ```text
 Read https://raw.githubusercontent.com/esiege/agent-manager-delux/main/deploy.md
 and set up Agent Manager Delux to run on this PC from this folder.
 ```
 
-</td></tr>
-</table>
+</div></pre></div>
 
-<table>
-<tr><td>
-
-<a href="https://github.com/esiege/agent-manager-delux/blob/main/web/public/instructions.md"><img src="Docs/assets/get-started-step-2.svg" alt="Step 2: connect your PCs by sending your agent one sentence. It sets itself up." width="900"></a>
-
-<a href="https://github.com/esiege/agent-manager-delux/blob/main/web/public/instructions.md"><img src="Docs/assets/get-started-connect-note.svg" alt="On your new site, copy the sentence from the Instructions tab and send it to Claude Code on each PC. Its sessions then appear on the Agents tab." width="900"></a>
-
-</td></tr>
-</table>
+<div><pre><a href="https://github.com/esiege/agent-manager-delux/blob/main/web/public/instructions.md"><img src="Docs/assets/get-started-step-2.svg" alt="Step 2: connect your PCs by sending your agent one sentence. It sets itself up." width="900"></a>
+<a href="https://github.com/esiege/agent-manager-delux/blob/main/web/public/instructions.md"><img src="Docs/assets/get-started-connect-note.svg" alt="On your new site, copy the sentence from the Instructions tab and send it to Claude Code on each PC. Its sessions then appear on the Agents tab." width="900"></a></pre></div>
 
 <details>
 <summary><b>Update, move, or set it up by hand</b></summary>
