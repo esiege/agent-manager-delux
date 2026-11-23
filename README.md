@@ -30,7 +30,7 @@
 
 <a href="https://github.com/esiege/agent-manager-delux/blob/main/deploy.md"><img src="Docs/assets/get-started-step-1.svg" alt="Step 1: paste one prompt in Claude Code, in an empty folder. About 10 minutes." width="900"></a>
 
-<a href="#get-started"><img src="Docs/assets/get-started-cloud.svg" alt="Cloud: every PC and your phone. Recommended. Copy the prompt below." width="900"></a>
+<a href="#get-started"><img src="Docs/assets/option-cloud.svg" alt="Cloud: every PC and your phone. Recommended." width="900"></a>
 
 ```text
 Read https://raw.githubusercontent.com/esiege/agent-manager-delux/main/deploy.md
@@ -39,7 +39,7 @@ and deploy my own Agent Manager Delux to Azure from this folder.
 
 <a href="https://azure.microsoft.com/free"><img src="Docs/assets/get-started-azure-note.svg" alt="You need an Azure account, which is free to open. Running the site usually costs a few cents a month. Opens the Azure sign-up page." width="900"></a>
 
-<a href="#get-started"><img src="Docs/assets/get-started-this-pc.svg" alt="This PC: this PC only. Free. Copy the prompt below." width="900"></a>
+<a href="#get-started"><img src="Docs/assets/option-this-pc.svg" alt="This PC: this PC only. Free." width="900"></a>
 
 ```text
 Read https://raw.githubusercontent.com/esiege/agent-manager-delux/main/deploy.md

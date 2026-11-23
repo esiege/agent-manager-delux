@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 64" width="900" height="64" role="img" aria-label="This PC: this PC only. Free.">
+  <defs>
+    <style>text{font-family:-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;fill:#e6edf6}</style>
+  </defs>
+  <rect x=".5" y=".5" width="899" height="63" rx="12" fill="#18202e"/>
+  <rect x="31" y="17" width="36" height="24" rx="3" fill="none" stroke="#74c0fc" stroke-width="3"/><path d="M25 47H73" stroke="#74c0fc" stroke-width="4" stroke-linecap="round"/>
+  <text x="90" y="29" style="font-size:18px;font-weight:700">This PC</text>
+  <text x="90" y="50" style="font-size:14px;fill:#9fb0c6">Only reachable from this PC.</text>
+  <rect x="756" y="18" width="126" height="28" rx="14" fill="none" stroke="#fcc419"/>
+  <text x="819" y="37" text-anchor="middle" style="font-size:13px;font-weight:700;fill:#fcc419">Free</text>
+</svg>
