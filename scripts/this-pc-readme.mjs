@@ -24,13 +24,17 @@ swap(
   `${tab('cloud', 'on', `${cloud} (selected)`)}<a href="${repo}/tree/this-pc#get-started">${tab('this-pc', 'off', pc)}</a>`,
   `<a href="${repo}#get-started">${tab('cloud', 'off', cloud)}</a>${tab('this-pc', 'on', `${pc} (selected)`)}`,
 );
-// The prompt is there twice: the visible cell, and the hidden text (<rp>) that the copy button copies.
-for (const end of ['</code></td>', '</rp>']) {
+// The prompt is there three times: drawn in the image, as its alt text, and as the hidden text (<rp>)
+// that the copy button copies. Keep Docs/assets/prompt-{cloud,pc}-*.svg in step with the wording here.
+for (const end of ['" width="762"', '</rp>']) {
   swap(
     'cloud prompt',
     `and deploy my own Agent Manager Delux to Azure from this folder.${end}`,
     `and set up Agent Manager Delux to run on this PC from this folder.${end}`,
   );
+}
+for (const theme of ['light', 'dark']) {
+  swap('prompt image', `/prompt-cloud-${theme}.svg`, `/prompt-pc-${theme}.svg`);
 }
 const note = text.match(/<a href="https:\/\/azure\.microsoft\.com\/free"><picture>[^\n]*<\/a>\n\n/);
 if (!note) throw new Error('README.md: no Azure note');
