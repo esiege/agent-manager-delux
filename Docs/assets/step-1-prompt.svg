@@ -12,8 +12,8 @@
   <text x="48" y="59" text-anchor="middle" style="font-size:20px;font-weight:700;fill:#fff">1</text>
   <text x="90" y="46" style="font-size:24px;font-weight:700">Paste a prompt to your agent</text>
   <text x="90" y="74" style="font-size:16px;fill:#9fb0c6">The agent will clone the repo and set up hosting.</text>
-  <rect x="640" y="14" width="244" height="76" rx="10" fill="#0b1019" stroke="#2b3850"/>
-  <circle cx="656" cy="29" r="4" fill="#ff6b6b"/><circle cx="670" cy="29" r="4" fill="#fcc419"/><circle cx="684" cy="29" r="4" fill="#51cf66"/>
-  <text class="m" x="656" y="56">&gt; Read deploy.md and</text>
-  <text class="m" x="656" y="76">  set it up for me…</text>
+  <rect x="596" y="14" width="244" height="76" rx="10" fill="#0b1019" stroke="#2b3850"/>
+  <circle cx="612" cy="29" r="4" fill="#ff6b6b"/><circle cx="626" cy="29" r="4" fill="#fcc419"/><circle cx="640" cy="29" r="4" fill="#51cf66"/>
+  <text class="m" x="612" y="56">&gt; Read deploy.md and</text>
+  <text class="m" x="612" y="76">  set it up for me…</text>
 </svg>
