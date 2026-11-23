@@ -28,7 +28,7 @@
 
 ## Get started
 
-<div><pre><a href="https://github.com/esiege/agent-manager-delux/blob/main/deploy.md"><img src="Docs/assets/get-started-step-1.svg" alt="Step 1: paste one prompt in Claude Code, in an empty folder. About 10 minutes." width="900"></a>
+<div><pre><a href="https://github.com/esiege/agent-manager-delux/blob/main/deploy.md"><img src="Docs/assets/step-1-paste.svg" alt="Step 1: paste a prompt to your agent. The agent will clone the repo and set up hosting." width="900"></a>
 <picture><source media="(prefers-color-scheme: light)" srcset="Docs/assets/tab-cloud-on-light.svg"><img src="Docs/assets/tab-cloud-on-dark.svg" alt="Cloud: works with every PC, and from your phone. Recommended. (selected)" width="49%"></picture><a href="https://github.com/esiege/agent-manager-delux/blob/main/Docs/get-started-this-pc.md#get-started"><picture><source media="(prefers-color-scheme: light)" srcset="Docs/assets/tab-this-pc-off-light.svg"><img src="Docs/assets/tab-this-pc-off-dark.svg" alt="This PC: only reachable from this PC. Free." width="49%"></picture></a>
 <div>
 
