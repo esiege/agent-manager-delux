@@ -13,7 +13,7 @@ function swap(what, from, to) {
 
 const repo = 'https://github.com/esiege/agent-manager-delux';
 const tab = (name, state, alt) => {
-  const file = `Docs/assets/tab-${name}-${state}`;
+  const file = `${repo}/raw/main/Docs/assets/tab-${name}-${state}`;
   return `<picture><source media="(prefers-color-scheme: light)" srcset="${file}-light.svg"><img src="${file}-dark.svg" alt="${alt}" width="50%"></picture>`;
 };
 const cloud = 'Cloud: works with every PC, and from your phone. Recommended.';
