@@ -13,7 +13,7 @@ function swap(what, from, to) {
 
 const repo = 'https://github.com/esiege/agent-manager-delux';
 const tab = (name, state, alt) => {
-  const file = `${repo}/raw/main/Docs/assets/setup-tab-${name}-${state}`;
+  const file = `${repo}/raw/main/Docs/assets/step1-tab-${name}-${state}`;
   return `<picture><source media="(prefers-color-scheme: light)" srcset="${file}-light.svg"><img src="${file}-dark.svg" alt="${alt}" width="50%" align="top"></picture>`;
 };
 const cloud = 'Cloud: works with every PC, and from your phone. Recommended.';
@@ -26,8 +26,8 @@ swap(
 );
 swap(
   'cloud prompt',
-  'and deploy my own Agent Manager Delux to Azure from this folder.</code>',
-  'and set up Agent Manager Delux to run on this PC from this folder.</code>',
+  'and deploy my own Agent Manager Delux to Azure from this folder.</td>',
+  'and set up Agent Manager Delux to run on this PC from this folder.</td>',
 );
 const note = text.match(/<a href="https:\/\/azure\.microsoft\.com\/free"><picture>[^\n]*<\/a>\n\n/);
 if (!note) throw new Error('README.md: no Azure note');
