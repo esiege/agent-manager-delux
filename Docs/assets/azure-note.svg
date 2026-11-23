@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 44" width="900" height="44" role="img" aria-label="You need an Azure account (free to open). Usually a few cents a month to run. Opens the Azure sign-up page.">
+  <style>text{font-family:-apple-system,'Segoe UI',Helvetica,Arial,sans-serif}</style>
+  <rect width="900" height="44" rx="10" fill="#111a2b"/>
+  <circle cx="45" cy="22" r="11" fill="none" stroke="#74c0fc" stroke-width="2"/>
+  <text x="45" y="27" text-anchor="middle" style="font-size:14px;font-weight:700;fill:#74c0fc">i</text>
+  <text x="90" y="27" style="font-size:15px;fill:#9fb0c6"><tspan font-weight="600" fill="#e6edf6">You need an Azure account.</tspan> Usually a few cents a month to run. <tspan font-weight="600" fill="#74c0fc">Open one free ›</tspan></text>
+</svg>
