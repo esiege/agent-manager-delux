@@ -33,20 +33,12 @@ and deploy my own Agent Manager Delux to Azure from this folder.</rp></code></pr
 
 <a href="https://azure.microsoft.com/free"><picture><source media="(prefers-color-scheme: light)" srcset="Docs/assets/note-azure-light.svg"><img src="Docs/assets/note-azure-dark.svg" alt="You need an Azure account (free to open). Usually a few cents a month to run. Opens the Azure sign-up page." width="900"></picture></a>
 
-<div><pre><a href="https://github.com/esiege/agent-manager-delux/blob/main/web/public/instructions.md"><img src="Docs/assets/get-started-step-2.svg" alt="Step 2: connect your PCs by sending your agent one sentence. It sets itself up." width="900"></a>
-<a href="https://github.com/esiege/agent-manager-delux/blob/main/web/public/instructions.md"><img src="Docs/assets/get-started-connect-note.svg" alt="On your new site, copy the sentence from the Instructions tab and send it to Claude Code on each PC. Its sessions then appear on the Agents tab." width="900"></a></pre></div>
+<div><a href="https://github.com/esiege/agent-manager-delux/blob/main/web/public/instructions.md"><picture><source media="(prefers-color-scheme: light)" srcset="https://github.com/esiege/agent-manager-delux/raw/main/Docs/assets/step2-lead-cloud-light.svg"><img src="https://github.com/esiege/agent-manager-delux/raw/main/Docs/assets/step2-lead-cloud-dark.svg" alt="Step 2: Connect your PCs. Send this to Claude Code on each PC. It sets itself up." width="900" align="top"></picture></a></div><div><pre lang="text"><code><sup><sup><picture><source media="(prefers-color-scheme: light)" srcset="https://github.com/esiege/agent-manager-delux/raw/main/Docs/assets/promptbox-connect-cloud-light.svg"><img src="https://github.com/esiege/agent-manager-delux/raw/main/Docs/assets/promptbox-connect-cloud-dark.svg" alt="Read https://&lt;your-site&gt;/instructions.md and set yourself up to report to Agent Manager Delux." width="762" align="top"></picture></sup></sup><rp>Read https://&lt;your-site&gt;/instructions.md
+and set yourself up to report to Agent Manager Delux.</rp></code></pre></div>
 
-<details>
-<summary><b>Update, move, or set it up by hand</b></summary>
-<br>
+<picture><source media="(prefers-color-scheme: light)" srcset="Docs/assets/note-connect-cloud-light.svg"><img src="Docs/assets/note-connect-cloud-dark.svg" alt="Use your site's address. The Instructions tab on your site has this prompt with it filled in." width="900"></picture>
 
-- **Update:** tell Claude Code, in the same folder: *Update my Agent Manager Delux, following deploy.md.*
-- **Move:** give Claude Code the link to [move to the cloud](https://raw.githubusercontent.com/esiege/agent-manager-delux/main/Docs/Move-To-Cloud.md) or [move to this PC](https://raw.githubusercontent.com/esiege/agent-manager-delux/main/Docs/Move-To-Local.md). Your data comes with it.
-- **By hand:** [deploy to Azure](#deploy-to-azure), or [run it on this PC](#for-contributors).
-
-</details>
-
-## Why
+## Why use Agent Manager Delux?
 
 If you run agents in several windows on more than one machine, you lose track of them. You find out a session was waiting for approval an hour after it asked, or you can't remember which one fixed what. Agent Manager Delux gives you one page that's never more than a few seconds behind.
 
