@@ -36,7 +36,7 @@
 </td></tr>
 <tr><td>
 
-<a><img src="Docs/assets/get-started-cloud.svg" alt="Cloud: every PC and your phone. Recommended. Copy the prompt below." width="900"></a>
+<a href="#get-started"><img src="Docs/assets/get-started-cloud.svg" alt="Cloud: every PC and your phone. Recommended. Copy the prompt below." width="900"></a>
 
 ```text
 Read https://raw.githubusercontent.com/esiege/agent-manager-delux/main/deploy.md
@@ -48,7 +48,7 @@ You need an [Azure account](https://azure.microsoft.com/free), which is free to 
 </td></tr>
 <tr><td>
 
-<a><img src="Docs/assets/get-started-this-pc.svg" alt="This PC: this PC only. Free. Copy the prompt below." width="900"></a>
+<a href="#get-started"><img src="Docs/assets/get-started-this-pc.svg" alt="This PC: this PC only. Free. Copy the prompt below." width="900"></a>
 
 ```text
 Read https://raw.githubusercontent.com/esiege/agent-manager-delux/main/deploy.md
@@ -69,17 +69,12 @@ On your new site, copy the sentence from the **Instructions** tab and send it to
 </table>
 
 <details>
-<summary><b>Other ways to set it up</b></summary>
+<summary><b>Update, move, or set it up by hand</b></summary>
 <br>
 
-| If you... | Do this |
-| --- | --- |
-| Already cloned this repo | Open Claude Code in the clone and say: *Read deploy.md in this repo and set up Agent Manager Delux* (in the cloud, or on this PC). |
-| Use a different agent | Send it the same prompt. Any agent that can run shell commands can follow [deploy.md](deploy.md). |
-| Would rather do it yourself | For the cloud, follow [Deploy to Azure](#deploy-to-azure): two commands. For this PC, see *Run it locally* under [For contributors](#for-contributors). |
-| Already deployed, and want the latest | Run `git pull`, then `./scripts/deploy.ps1 -SkipInfra`. |
-| Want to move from this PC to the cloud | Tell Claude Code: *Read https://raw.githubusercontent.com/esiege/agent-manager-delux/main/Docs/Move-To-Cloud.md and move my Agent Manager Delux from this PC to the cloud.* Your data and keys come with it. |
-| Want to move from the cloud to this PC | Tell Claude Code: *Read https://raw.githubusercontent.com/esiege/agent-manager-delux/main/Docs/Move-To-Local.md and move my Agent Manager Delux from the cloud to this PC.* |
+- **Update:** tell Claude Code, in the same folder: *Update my Agent Manager Delux, following deploy.md.*
+- **Move:** give Claude Code the link to [move to the cloud](https://raw.githubusercontent.com/esiege/agent-manager-delux/main/Docs/Move-To-Cloud.md) or [move to this PC](https://raw.githubusercontent.com/esiege/agent-manager-delux/main/Docs/Move-To-Local.md). Your data comes with it.
+- **By hand:** [deploy to Azure](#deploy-to-azure), or [run it on this PC](#for-contributors).
 
 </details>
 
